@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useAuth } from "@/context/AuthContext";
+import { VenueOnboardingTour, OnboardingHighlight } from "@/components/VenueOnboardingTour";
 
 const SPECIALTY_OPTIONS = [
   { label: "Hair", icon: "M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.522 4.82 3.889 6.21L6 21l4.353-1.813A10.065 10.065 0 0012 19.23c4.97 0 9-3.186 9-7.115C21 8.185 16.97 5 12 5V3z" },
@@ -21,8 +22,32 @@ const SPECIALTY_OPTIONS = [
 ];
 
 export default function VenueProfilePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background">
+          <Navbar />
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          </div>
+        </div>
+      }
+    >
+      <VenueProfilePageInner />
+    </Suspense>
+  );
+}
+
+function VenueProfilePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
+
+  // "true"  = first-time real signup (uses + sets localStorage flag)
+  // "force" = dev preview mode (always shows animation, never sets flag)
+  const onboardingParam = searchParams.get("onboarding");
+  const isOnboarding = onboardingParam === "true" || onboardingParam === "force";
+  const forceOnboarding = onboardingParam === "force";
 
   if (!user) {
     return (
@@ -74,7 +99,12 @@ export default function VenueProfilePage() {
           </Link>
         </div>
 
-        <VenueProfileContent venueId={user.accountId} venueName={user.name} />
+        <VenueProfileContent
+          venueId={user.accountId}
+          venueName={user.name}
+          isOnboarding={isOnboarding}
+          forceOnboarding={forceOnboarding}
+        />
       </div>
     </div>
   );
@@ -108,14 +138,26 @@ function SectionHeader({
 // ────────────────────────────────────────────────────────────
 // Profile editing content
 // ────────────────────────────────────────────────────────────
+const ONBOARDING_KEY = (accountId: string) =>
+  `sharedsalon_venue_onboarding_seen_${accountId}`;
+
 function VenueProfileContent({
   venueId,
   venueName,
+  isOnboarding = false,
+  forceOnboarding = false,
 }: {
   venueId: string;
   venueName: string;
+  isOnboarding?: boolean;
+  forceOnboarding?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Onboarding tour state
+  const [showTour, setShowTour] = useState(false);
+  const [activeTourSection, setActiveTourSection] = useState<string | null>(null);
+  const [activeTourStep, setActiveTourStep] = useState(1);
 
   const [displayName, setDisplayName] = useState(venueName);
   const [bio, setBio] = useState("");
@@ -163,6 +205,29 @@ function VenueProfileContent({
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [venueId, venueName]);
+
+  // Start onboarding tour — once per account (or always in force/preview mode)
+  useEffect(() => {
+    if (!isOnboarding) return;
+
+    if (!forceOnboarding) {
+      const seen =
+        typeof window !== "undefined"
+          ? localStorage.getItem(ONBOARDING_KEY(venueId))
+          : "1";
+      if (seen) return;
+      localStorage.setItem(ONBOARDING_KEY(venueId), "1");
+    }
+
+    // Small delay so the page has fully rendered before the tour appears
+    const t = setTimeout(() => setShowTour(true), 400);
+    return () => clearTimeout(t);
+  }, [isOnboarding, forceOnboarding, venueId]);
+
+  const handleSectionChange = useCallback((id: string | null, stepNum: number) => {
+    setActiveTourSection(id);
+    setActiveTourStep(stepNum);
+  }, []);
 
   // Completion tracker
   const completionItems = [
@@ -263,7 +328,17 @@ function VenueProfileContent({
   }
 
   return (
-    <div className="space-y-5">
+    <div className={`space-y-5 ${showTour ? "pb-56" : ""}`}>
+      {/* ── Onboarding tour ──────────────────────────────────── */}
+      {showTour && (
+        <VenueOnboardingTour
+          venueName={venueName}
+          onSectionChange={handleSectionChange}
+          onComplete={() => setShowTour(false)}
+          onSkip={() => { setShowTour(false); setActiveTourSection(null); }}
+        />
+      )}
+
       {/* ── Profile completion ──────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="px-5 pt-4 pb-3">
@@ -307,7 +382,8 @@ function VenueProfileContent({
       </div>
 
       {/* ── Section 1: About ────────────────────────────────── */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <OnboardingHighlight sectionId="tour-about" activeSectionId={activeTourSection} stepNumber={activeTourStep}>
+      <div id="tour-about" className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -317,11 +393,9 @@ function VenueProfileContent({
           title="About Your Venue"
           description="Name, bio, and social links visible on your public profile"
         />
-        <div className="space-y-4 p-5">
+          <div className="space-y-4 p-5">
           <div>
-            <label className="mb-1 block text-sm font-semibold text-foreground">
-              Venue name
-            </label>
+            <label className="mb-1 block text-sm font-semibold text-foreground">Venue name</label>
             <input
               type="text"
               value={displayName}
@@ -375,8 +449,11 @@ function VenueProfileContent({
         </div>
       </div>
 
+      </OnboardingHighlight>
+
       {/* ── Section 2: Photo Library ─────────────────────────── */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <OnboardingHighlight sectionId="tour-photos" activeSectionId={activeTourSection} stepNumber={activeTourStep}>
+      <div id="tour-photos" className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -575,8 +652,11 @@ function VenueProfileContent({
         </div>
       </div>
 
+      </OnboardingHighlight>
+
       {/* ── Section 3: Location ─────────────────────────────── */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <OnboardingHighlight sectionId="tour-location" activeSectionId={activeTourSection} stepNumber={activeTourStep}>
+      <div id="tour-location" className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -617,6 +697,8 @@ function VenueProfileContent({
           })()}
         </div>
       </div>
+
+      </OnboardingHighlight>
 
       {/* ── Section 4: Specialties ──────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">

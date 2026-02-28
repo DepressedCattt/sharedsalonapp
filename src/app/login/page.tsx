@@ -1,22 +1,51 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSession, signIn } from "next-auth/react";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import { UserRole } from "@/lib/types";
+
+const DEV_PERSONAS = [
+  {
+    id: "dev-venue",
+    label: "Venue Owner",
+    description: "Manage listings & bookings",
+    role: "venue" as const,
+    redirectTo: "/dashboard",
+  },
+  {
+    id: "dev-renter",
+    label: "Freelancer",
+    description: "Browse & rent chairs",
+    role: "renter" as const,
+    redirectTo: "/listings",
+  },
+  {
+    id: "dev-new",
+    label: "New User",
+    description: "Test the sign-up flow",
+    role: null,
+    redirectTo: "/login",
+  },
+];
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const { user, setRole } = useAuth();
+  const [devLoading, setDevLoading] = useState<string | null>(null);
+  const [roleLoading, setRoleLoading] = useState<string | null>(null);
+  // Prevent the auto-redirect effect from firing while we're handling role selection
+  const isSelectingRoleRef = useRef(false);
 
   const intent = searchParams.get("intent");
+  const isDev = process.env.NODE_ENV === "development";
 
   useEffect(() => {
-    if (user) {
+    if (user && !isSelectingRoleRef.current) {
       router.push(user.role === "renter" ? "/listings" : "/dashboard");
     }
   }, [user, router]);
@@ -28,9 +57,43 @@ function LoginContent() {
     signIn("google", { callbackUrl: "/login" });
   };
 
+  const handleFacebookSignIn = () => {
+    signIn("facebook", { callbackUrl: "/login" });
+  };
+
   const handleRoleSelect = async (role: UserRole) => {
+    isSelectingRoleRef.current = true;
+    setRoleLoading(role);
     await setRole(role);
-    router.push(role === "renter" ? "/listings" : "/dashboard");
+
+    if (role === "venue" && session?.user?.id) {
+      // Check whether this venue already has a profile (returning user)
+      try {
+        const venueId = `${session.user.id}_venue`;
+        const res = await fetch(`/api/venue-profile?venueId=${encodeURIComponent(venueId)}`);
+        if (!res.ok) {
+          // 404 = brand-new venue → send to profile setup with onboarding
+          router.push("/venue-profile?onboarding=true");
+          return;
+        }
+      } catch {
+        // On network error default to onboarding
+        router.push("/venue-profile?onboarding=true");
+        return;
+      }
+      router.push("/dashboard");
+    } else {
+      router.push("/listings");
+    }
+  };
+
+  const handleDevLogin = async (persona: (typeof DEV_PERSONAS)[number]) => {
+    setDevLoading(persona.id);
+    await signIn("dev", {
+      persona: persona.id,
+      callbackUrl: persona.redirectTo,
+    });
+    setDevLoading(null);
   };
 
   if (isLoading) {
@@ -49,7 +112,7 @@ function LoginContent() {
       <Navbar />
 
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md space-y-4">
           <div className="rounded-2xl border border-border bg-card p-8 shadow-lg">
             {/* Header */}
             <div className="text-center">
@@ -91,10 +154,11 @@ function LoginContent() {
             <div className="mt-8 space-y-3">
               {isAuthenticated ? (
                 <>
-                  {/* Role selection after Google sign-in */}
+                  {/* Role selection after sign-in */}
                   <button
                     onClick={() => handleRoleSelect("renter")}
-                    className={`group flex w-full items-center gap-4 rounded-xl border-2 p-4 transition-all cursor-pointer ${
+                    disabled={roleLoading !== null}
+                    className={`group flex w-full items-center gap-4 rounded-xl border-2 p-4 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                       intent === "renter"
                         ? "border-primary bg-primary-light"
                         : "border-border hover:border-primary hover:bg-primary-light/50"
@@ -123,24 +187,29 @@ function LoginContent() {
                         Browse and rent chairs at salon venues
                       </p>
                     </div>
-                    <svg
-                      className="ml-auto h-5 w-5 text-muted transition-colors group-hover:text-primary"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                      />
-                    </svg>
+                    {roleLoading === "renter" ? (
+                      <div className="ml-auto h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    ) : (
+                      <svg
+                        className="ml-auto h-5 w-5 text-muted transition-colors group-hover:text-primary"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                        />
+                      </svg>
+                    )}
                   </button>
 
                   <button
                     onClick={() => handleRoleSelect("venue")}
-                    className={`group flex w-full items-center gap-4 rounded-xl border-2 p-4 transition-all cursor-pointer ${
+                    disabled={roleLoading !== null}
+                    className={`group flex w-full items-center gap-4 rounded-xl border-2 p-4 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                       intent === "venue"
                         ? "border-primary bg-primary-light"
                         : "border-border hover:border-primary hover:bg-primary-light/50"
@@ -169,19 +238,23 @@ function LoginContent() {
                         List your chairs and manage bookings
                       </p>
                     </div>
-                    <svg
-                      className="ml-auto h-5 w-5 text-muted transition-colors group-hover:text-primary"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                      />
-                    </svg>
+                    {roleLoading === "venue" ? (
+                      <div className="ml-auto h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    ) : (
+                      <svg
+                        className="ml-auto h-5 w-5 text-muted transition-colors group-hover:text-primary"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                        />
+                      </svg>
+                    )}
                   </button>
                 </>
               ) : (
@@ -212,6 +285,17 @@ function LoginContent() {
                     Continue with Google
                   </button>
 
+                  {/* Facebook sign-in button */}
+                  <button
+                    onClick={handleFacebookSignIn}
+                    className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-border bg-white px-4 py-3.5 font-medium text-foreground transition-all hover:border-[#1877F2]/40 hover:shadow-md cursor-pointer"
+                  >
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="#1877F2">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                    </svg>
+                    Continue with Facebook
+                  </button>
+
                   <p className="pt-2 text-center text-xs text-muted">
                     By continuing, you agree to our Terms of Service and Privacy
                     Policy
@@ -220,6 +304,57 @@ function LoginContent() {
               )}
             </div>
           </div>
+
+          {/* Dev login panel — only visible in development */}
+          {isDev && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 ring-1 ring-inset ring-amber-500/20">
+                    DEV
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">Quick Login</span>
+                </div>
+                <a
+                  href="/admin"
+                  className="text-xs text-amber-600 hover:text-amber-500 transition-colors"
+                >
+                  Admin Hub →
+                </a>
+              </div>
+
+              <div className="space-y-2">
+                {DEV_PERSONAS.map((persona) => (
+                  <button
+                    key={persona.id}
+                    onClick={() => handleDevLogin(persona)}
+                    disabled={devLoading !== null}
+                    className="group flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:border-amber-500/40 hover:bg-amber-500/5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{persona.label}</p>
+                      <p className="text-xs text-muted">{persona.description}</p>
+                    </div>
+                    {devLoading === persona.id ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                    ) : (
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-md ${
+                          persona.role === "venue"
+                            ? "bg-blue-500/10 text-blue-600"
+                            : persona.role === "renter"
+                            ? "bg-green-500/10 text-green-600"
+                            : "bg-amber-500/10 text-amber-600"
+                        }`}
+                      >
+                        {persona.role ?? "new user"}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -7,6 +7,10 @@ declare module "next-auth" {
       role?: "venue" | "renter";
     } & DefaultSession["user"];
   }
+
+  interface User {
+    role?: "venue" | "renter";
+  }
 }
 
 declare module "next-auth/jwt" {
