@@ -56,7 +56,7 @@ function TierPill({
   foundingVerified: boolean;
   size: "sm" | "md" | "lg";
 }) {
-  const cfg = TIER_CONFIG[tier];
+  const cfg = TIER_CONFIG[tier] ?? TIER_CONFIG.unranked;
   const pillSize =
     size === "sm"
       ? "px-2 py-0.5 text-[10px] gap-1"
