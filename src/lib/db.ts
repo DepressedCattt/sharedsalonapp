@@ -34,6 +34,8 @@ export async function connectDB(): Promise<typeof mongoose | null> {
       .connect(MONGODB_URI, {
         serverSelectionTimeoutMS: 10_000,
         socketTimeoutMS: 45_000,
+        maxPoolSize: 5,
+        bufferCommands: false,
       })
       .catch((err) => {
         // Reset so the next request retries instead of re-awaiting a dead promise.
