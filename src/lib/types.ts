@@ -20,7 +20,7 @@ export interface UserProfile {
   displayName: string;
   email: string;
   phone: string;
-  /** Address or location text (e.g. "London, UK" or full address). */
+  /** Address or location text (e.g. "Sydney, NSW" or full address). */
   location: string;
   /** Venue: payout account; Renter: payment method. */
   paymentAccount: {
@@ -191,6 +191,28 @@ export interface VenueProfile {
   updatedAt?: string;
 }
 
+export interface FreelancerProfile {
+  id?: string;
+  /** Matches User.accountId for renter accounts (e.g. "userId_renter"). */
+  renterId: string;
+  displayName: string;
+  bio: string;
+  /** Portfolio / headshot photos. */
+  photos: string[];
+  /** URL of the photo used as the freelancer's avatar. */
+  profilePhoto?: string | null;
+  /** URL of the photo used as the hero banner. */
+  bannerPhoto?: string | null;
+  /** Types of work the freelancer specialises in (e.g. "Hair", "Nails"). */
+  specialties: string[];
+  /** Whether to surface booking reviews on the public profile. */
+  showReviews: boolean;
+  website?: string;
+  instagram?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // ── Reviews ────────────────────────────────────────────────
 
 /** Individual criterion scores, each on a 1–10 scale. */
@@ -220,14 +242,19 @@ export interface Review {
 
 // ── Trust System ────────────────────────────────────────────
 
-export type TrustTier = "unranked" | "bronze" | "silver" | "gold" | "platinum";
+export type TrustTier =
+  | "fresh"
+  | "bronze"
+  | "silver"
+  | "gold"
+  | "platinum"
+  | "trailblazer";
 
 export interface RenterTrustMetrics {
   reliabilityScore: number;
   professionalismScore: number;
   cleanlinessScore: number;
   responsivenessScore: number;
-  repeatRate: number;
   totalCompleted: number;
   totalCancelled: number;
   disputeCount: number;
@@ -236,7 +263,6 @@ export interface RenterTrustMetrics {
 export interface VenueTrustMetrics {
   fairnessScore: number;
   satisfactionScore: number;
-  retentionRate: number;
   paymentScore: number;
   activeFreelancers: number;
   totalCompleted: number;
@@ -250,6 +276,7 @@ export interface TrustProfile {
   tier: TrustTier;
   foundingVerified: boolean;
   trustScore: number;
+  pendingTrustScore?: number;
   renterMetrics?: RenterTrustMetrics;
   venueMetrics?: VenueTrustMetrics;
   lastCalculatedAt?: string;
@@ -257,12 +284,29 @@ export interface TrustProfile {
   updatedAt?: string;
 }
 
+export type ArrivalStatus = "on_time" | "late" | "no_show";
+
 export type TrustIssueFlag =
-  | "reliability"
-  | "cleanliness"
-  | "professionalism"
-  | "rules"
+  | "late_cancellation"
+  | "no_show"
+  | "damage"
+  | "unprofessional"
+  | "rules_violation"
+  | "listing_inaccurate"
+  | "rules_changed"
+  | "poor_communication"
+  | "venue_cleanliness"
+  | "payment_issue"
   | "other";
+
+export interface TrustDimensionRatings {
+  arrivalStatus?: ArrivalStatus;
+  professionalism?: number;
+  cleanliness?: number;
+  communication?: number;
+  accuracy?: number;
+  fairness?: number;
+}
 
 export interface TrustReview {
   id: string;
@@ -271,6 +315,7 @@ export interface TrustReview {
   reviewerRole: UserRole;
   revieweeAccountId: string;
   quickRating: number;
+  dimensionRatings?: TrustDimensionRatings;
   wouldBookAgain?: boolean;
   issueFlags: TrustIssueFlag[];
   isPublished: boolean;

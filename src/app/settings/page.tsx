@@ -138,7 +138,7 @@ export default function SettingsPage() {
                   value={form.phone}
                   onChange={(e) => handleChange("phone", e.target.value)}
                   className="mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  placeholder="+44 7XXX XXXXXX"
+                  placeholder="+61 4XX XXX XXX"
                 />
               </div>
             </div>
@@ -162,7 +162,7 @@ export default function SettingsPage() {
                 value={form.location}
                 onChange={(e) => handleChange("location", e.target.value)}
                 className="mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder={isVenue ? "123 High Street, London" : "London, UK"}
+                placeholder={isVenue ? "123 High Street, Sydney NSW" : "Sydney, NSW"}
               />
             </div>
           </section>

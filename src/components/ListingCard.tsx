@@ -170,7 +170,7 @@ export default function ListingCard({ listing, onDelete, showEdit, pendingCount,
         </div>
 
         {/* Venue trust tier badge */}
-        {venueTrustProfile && venueTrustProfile.tier !== "unranked" && (
+        {venueTrustProfile && venueTrustProfile.tier !== "fresh" && (
           <div className="mt-2">
             <TrustBadge profile={venueTrustProfile} size="sm" />
           </div>

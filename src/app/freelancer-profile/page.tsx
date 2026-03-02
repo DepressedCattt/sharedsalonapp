@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useAuth } from "@/context/AuthContext";
-import { VenueOnboardingTour, OnboardingHighlight } from "@/components/VenueOnboardingTour";
 import TrustProfileCard from "@/components/TrustProfileCard";
+import type { FreelancerProfile } from "@/lib/types";
 
 const SPECIALTY_OPTIONS = [
   { label: "Hair", icon: "M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.522 4.82 3.889 6.21L6 21l4.353-1.813A10.065 10.065 0 0012 19.23c4.97 0 9-3.186 9-7.115C21 8.185 16.97 5 12 5V3z" },
@@ -22,7 +20,7 @@ const SPECIALTY_OPTIONS = [
   { label: "Other", icon: "M12 4.5v15m7.5-7.5h-15" },
 ];
 
-export default function VenueProfilePage() {
+export default function FreelancerProfilePage() {
   return (
     <Suspense
       fallback={
@@ -34,22 +32,15 @@ export default function VenueProfilePage() {
         </div>
       }
     >
-      <VenueProfilePageInner />
+      <FreelancerProfilePageInner />
     </Suspense>
   );
 }
 
-function VenueProfilePageInner() {
+function FreelancerProfilePageInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"profile" | "trust">("profile");
-
-  // "true"  = first-time real signup (uses + sets localStorage flag)
-  // "force" = dev preview mode (always shows animation, never sets flag)
-  const onboardingParam = searchParams.get("onboarding");
-  const isOnboarding = onboardingParam === "true" || onboardingParam === "force";
-  const forceOnboarding = onboardingParam === "force";
 
   if (!user) {
     return (
@@ -58,7 +49,7 @@ function VenueProfilePageInner() {
         <div className="flex min-h-[60vh] items-center justify-center">
           <div className="text-center">
             <p className="text-lg font-medium text-foreground">
-              Please log in to manage your venue profile.
+              Please log in to manage your freelancer profile.
             </p>
             <button
               onClick={() => router.push("/login")}
@@ -72,7 +63,7 @@ function VenueProfilePageInner() {
     );
   }
 
-  if (user.role !== "venue") {
+  if (user.role !== "renter") {
     router.replace("/settings");
     return null;
   }
@@ -82,25 +73,11 @@ function VenueProfilePageInner() {
       <Navbar />
       <div className="mx-auto max-w-2xl px-4 pb-32 pt-8 sm:px-6">
         {/* Page header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Venue Profile</h1>
-            <p className="mt-1 text-sm text-muted">
-              Your public page — what freelancers see when they discover your venue.
-            </p>
-          </div>
-          {activeTab === "profile" && (
-            <Link
-              href={`/venues/${user.accountId}`}
-              target="_blank"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              Preview
-            </Link>
-          )}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-foreground">My Profile</h1>
+          <p className="mt-1 text-sm text-muted">
+            Your public page — what venues see when they review your booking requests.
+          </p>
         </div>
 
         {/* Tab navigation */}
@@ -137,17 +114,15 @@ function VenueProfilePageInner() {
 
         {/* Profile tab — keep mounted to preserve form state */}
         <div style={{ display: activeTab === "profile" ? "block" : "none" }}>
-          <VenueProfileContent
-            venueId={user.accountId}
-            venueName={user.name}
-            isOnboarding={isOnboarding}
-            forceOnboarding={forceOnboarding}
+          <FreelancerProfileContent
+            renterId={user.accountId}
+            renterName={user.name}
           />
         </div>
 
         {/* Trust Profile tab */}
         {activeTab === "trust" && (
-          <VenueTrustTab venueId={user.accountId} />
+          <FreelancerTrustTab renterId={user.accountId} />
         )}
       </div>
     </div>
@@ -182,38 +157,21 @@ function SectionHeader({
 // ────────────────────────────────────────────────────────────
 // Profile editing content
 // ────────────────────────────────────────────────────────────
-const ONBOARDING_KEY = (accountId: string) =>
-  `sharedsalon_venue_onboarding_seen_${accountId}`;
-
-function VenueProfileContent({
-  venueId,
-  venueName,
-  isOnboarding = false,
-  forceOnboarding = false,
+function FreelancerProfileContent({
+  renterId,
+  renterName,
 }: {
-  venueId: string;
-  venueName: string;
-  isOnboarding?: boolean;
-  forceOnboarding?: boolean;
+  renterId: string;
+  renterName: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Onboarding tour state
-  const [showTour, setShowTour] = useState(false);
-  const [activeTourSection, setActiveTourSection] = useState<string | null>(null);
-  const [activeTourStep, setActiveTourStep] = useState(1);
-
-  const [displayName, setDisplayName] = useState(venueName);
+  const [displayName, setDisplayName] = useState(renterName);
   const [bio, setBio] = useState("");
-  const [location, setLocation] = useState("");
-  const [latitude, setLatitude] = useState<number | undefined>(undefined);
-  const [longitude, setLongitude] = useState<number | undefined>(undefined);
   const [photos, setPhotos] = useState<string[]>([]);
-  const [bannerPhoto, setBannerPhoto] = useState<string | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [bannerPhoto, setBannerPhoto] = useState<string | null>(null);
   const [specialties, setSpecialties] = useState<string[]>([]);
-  const [boothPolicies, setBoothPolicies] = useState<string[]>([]);
-  const [policyInput, setPolicyInput] = useState("");
   const [showReviews, setShowReviews] = useState(true);
   const [website, setWebsite] = useState("");
   const [instagram, setInstagram] = useState("");
@@ -226,21 +184,17 @@ function VenueProfileContent({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/venue-profile?venueId=${venueId}`)
+    fetch(`/api/freelancer-profile?renterId=${renterId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+      .then((data: FreelancerProfile | null) => {
         if (data) {
-          setDisplayName(data.displayName || venueName);
+          setDisplayName(data.displayName || renterName);
           setBio(data.bio || "");
-          setLocation(data.location || "");
-          setLatitude(data.latitude);
-          setLongitude(data.longitude);
           const loadedPhotos = data.photos || [];
           setPhotos(loadedPhotos);
-          setBannerPhoto(data.bannerPhoto || loadedPhotos[0] || null);
           setProfilePhoto(data.profilePhoto || null);
+          setBannerPhoto(data.bannerPhoto || loadedPhotos[0] || null);
           setSpecialties(data.specialties || []);
-          setBoothPolicies(data.boothPolicies || []);
           setShowReviews(data.showReviews ?? true);
           setWebsite(data.website || "");
           setInstagram(data.instagram || "");
@@ -248,36 +202,12 @@ function VenueProfileContent({
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [venueId, venueName]);
-
-  // Start onboarding tour — once per account (or always in force/preview mode)
-  useEffect(() => {
-    if (!isOnboarding) return;
-
-    if (!forceOnboarding) {
-      const seen =
-        typeof window !== "undefined"
-          ? localStorage.getItem(ONBOARDING_KEY(venueId))
-          : "1";
-      if (seen) return;
-      localStorage.setItem(ONBOARDING_KEY(venueId), "1");
-    }
-
-    // Small delay so the page has fully rendered before the tour appears
-    const t = setTimeout(() => setShowTour(true), 400);
-    return () => clearTimeout(t);
-  }, [isOnboarding, forceOnboarding, venueId]);
-
-  const handleSectionChange = useCallback((id: string | null, stepNum: number) => {
-    setActiveTourSection(id);
-    setActiveTourStep(stepNum);
-  }, []);
+  }, [renterId, renterName]);
 
   // Completion tracker
   const completionItems = [
     { label: "Name", done: displayName.trim().length > 0 },
     { label: "Bio", done: bio.trim().length > 0 },
-    { label: "Location", done: location.trim().length > 0 },
     { label: "Photos", done: photos.length > 0 },
     { label: "Specialties", done: specialties.length > 0 },
     { label: "Social", done: !!(website.trim() || instagram.trim()) },
@@ -309,8 +239,8 @@ function VenueProfileContent({
 
   const removePhoto = (url: string) => {
     setPhotos((prev) => prev.filter((p) => p !== url));
-    if (bannerPhoto === url) setBannerPhoto(null);
     if (profilePhoto === url) setProfilePhoto(null);
+    if (bannerPhoto === url) setBannerPhoto(null);
   };
 
   const toggleSpecialty = (s: string) => {
@@ -319,35 +249,20 @@ function VenueProfileContent({
     );
   };
 
-  const addPolicy = () => {
-    const trimmed = policyInput.trim();
-    if (trimmed && !boothPolicies.includes(trimmed)) {
-      setBoothPolicies((prev) => [...prev, trimmed]);
-      setPolicyInput("");
-    }
-  };
-
-  const removePolicy = (p: string) =>
-    setBoothPolicies((prev) => prev.filter((x) => x !== p));
-
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/venue-profile", {
+      const res = await fetch("/api/freelancer-profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           displayName,
           bio,
-          location,
-          latitude,
-          longitude,
           photos,
-          bannerPhoto: bannerPhoto || photos[0] || null,
-          profilePhoto,
+          profilePhoto: profilePhoto || photos[0] || null,
+          bannerPhoto: bannerPhoto || null,
           specialties,
-          boothPolicies,
           showReviews,
           website,
           instagram,
@@ -357,7 +272,7 @@ function VenueProfileContent({
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      setError("Failed to save venue profile");
+      setError("Failed to save profile");
     } finally {
       setSaving(false);
     }
@@ -372,17 +287,7 @@ function VenueProfileContent({
   }
 
   return (
-    <div className={`space-y-5 ${showTour ? "pb-56" : ""}`}>
-      {/* ── Onboarding tour ──────────────────────────────────── */}
-      {showTour && (
-        <VenueOnboardingTour
-          venueName={venueName}
-          onSectionChange={handleSectionChange}
-          onComplete={() => setShowTour(false)}
-          onSkip={() => { setShowTour(false); setActiveTourSection(null); }}
-        />
-      )}
-
+    <div className="space-y-5">
       {/* ── Profile completion ──────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="px-5 pt-4 pb-3">
@@ -426,25 +331,24 @@ function VenueProfileContent({
       </div>
 
       {/* ── Section 1: About ────────────────────────────────── */}
-      <OnboardingHighlight sectionId="tour-about" activeSectionId={activeTourSection} stepNumber={activeTourStep}>
-      <div id="tour-about" className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
             </svg>
           }
-          title="About Your Venue"
+          title="About You"
           description="Name, bio, and social links visible on your public profile"
         />
-          <div className="space-y-4 p-5">
+        <div className="space-y-4 p-5">
           <div>
-            <label className="mb-1 block text-sm font-semibold text-foreground">Venue name</label>
+            <label className="mb-1 block text-sm font-semibold text-foreground">Display name</label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Salon or studio name"
+              placeholder="Your name or business name"
               className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -452,14 +356,14 @@ function VenueProfileContent({
           <div>
             <label className="mb-1 block text-sm font-semibold text-foreground">Bio</label>
             <p className="mb-2 text-xs text-muted">
-              Tell freelancers what makes your space special. Shown at the top of your profile.
+              Tell venues about your experience and style. Shown at the top of your profile.
             </p>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               rows={4}
               maxLength={600}
-              placeholder="Describe your space, vibe, and what makes it a great place to work..."
+              placeholder="Describe your skills, experience, and what makes you a great freelancer to work with..."
               className="w-full resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <p className="mt-1 text-right text-xs text-muted">{bio.length}/600</p>
@@ -472,7 +376,7 @@ function VenueProfileContent({
                 type="url"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
-                placeholder="https://yoursalon.com"
+                placeholder="https://yoursite.com"
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -484,7 +388,7 @@ function VenueProfileContent({
                   type="text"
                   value={instagram}
                   onChange={(e) => setInstagram(e.target.value.replace(/^@/, ""))}
-                  placeholder="yoursalon"
+                  placeholder="yourhandle"
                   className="w-full rounded-lg border border-border bg-background pl-8 pr-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -493,19 +397,16 @@ function VenueProfileContent({
         </div>
       </div>
 
-      </OnboardingHighlight>
-
       {/* ── Section 2: Photo Library ─────────────────────────── */}
-      <OnboardingHighlight sectionId="tour-photos" activeSectionId={activeTourSection} stepNumber={activeTourStep}>
-      <div id="tour-photos" className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
             </svg>
           }
-          title="Photo Library"
-          description="Upload photos once — reuse them across all listings. Set a banner and profile image."
+          title="Photos"
+          description="Portfolio shots and a profile photo — help venues get to know you"
         />
         <div className="p-5">
           <input
@@ -519,17 +420,17 @@ function VenueProfileContent({
 
           {/* Role legend */}
           <div className="mb-4 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
-              </svg>
-              Banner — full-width hero on your venue profile
-            </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1.5 text-xs font-medium text-violet-700">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
               </svg>
-              Profile — your venue avatar / logo
+              Profile — your freelancer avatar
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909" />
+              </svg>
+              Banner — full-width hero on your profile
             </span>
           </div>
 
@@ -572,53 +473,45 @@ function VenueProfileContent({
             )}
           </div>
 
-          {/* Photo grid with banner/profile selection */}
+          {/* Photo grid */}
           {photos.length > 0 && (
             <>
               <p className="mt-4 mb-2.5 text-xs text-muted">
-                Hover a photo to set it as your <span className="font-semibold text-primary">Banner</span> or <span className="font-semibold text-violet-600">Profile</span> image.
+                Hover a photo to set it as your <span className="font-semibold text-violet-600">Profile</span> or <span className="font-semibold text-primary">Banner</span> image.
               </p>
               <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                 {photos.map((url) => {
-                  const isBanner = bannerPhoto === url;
                   const isProfile = profilePhoto === url;
+                  const isBanner = bannerPhoto === url;
                   return (
                     <div
                       key={url}
                       className={`group relative aspect-square overflow-hidden rounded-xl transition-all ${
-                        isBanner
-                          ? "ring-2 ring-primary ring-offset-2"
-                          : isProfile
+                        isProfile
                           ? "ring-2 ring-violet-500 ring-offset-2"
+                          : isBanner
+                          ? "ring-2 ring-primary ring-offset-2"
                           : "border border-border"
                       }`}
                     >
                       <img src={url} alt="" className="h-full w-full object-cover" />
-
-                      {/* Dark overlay on hover */}
                       <div className="absolute inset-0 bg-black/0 transition-all group-hover:bg-black/45 pointer-events-none" />
 
-                      {/* Status badges (always visible when set) */}
+                      {/* Status badges */}
                       <div className="absolute left-1.5 top-1.5 flex flex-col gap-1">
-                        {isBanner && (
-                          <span className="flex items-center gap-0.5 rounded bg-primary/95 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-                            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909" />
-                            </svg>
-                            Banner
-                          </span>
-                        )}
                         {isProfile && (
                           <span className="flex items-center gap-0.5 rounded bg-violet-600/95 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-                            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
-                            </svg>
                             Profile
+                          </span>
+                        )}
+                        {isBanner && (
+                          <span className="flex items-center gap-0.5 rounded bg-primary/95 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
+                            Banner
                           </span>
                         )}
                       </div>
 
-                      {/* Remove button (top-right, hover) */}
+                      {/* Remove button */}
                       <button
                         type="button"
                         onClick={() => removePhoto(url)}
@@ -629,19 +522,8 @@ function VenueProfileContent({
                         </svg>
                       </button>
 
-                      {/* Bottom action strip (slides up on hover) */}
+                      {/* Bottom action strip */}
                       <div className="absolute inset-x-0 bottom-0 flex translate-y-full gap-1 p-1.5 transition-transform duration-200 group-hover:translate-y-0">
-                        <button
-                          type="button"
-                          onClick={() => setBannerPhoto(isBanner ? null : url)}
-                          className={`flex-1 rounded py-1.5 text-[10px] font-bold transition-colors cursor-pointer ${
-                            isBanner
-                              ? "bg-primary text-white"
-                              : "bg-white/20 text-white backdrop-blur-sm hover:bg-primary"
-                          }`}
-                        >
-                          {isBanner ? "✓ Banner" : "Banner"}
-                        </button>
                         <button
                           type="button"
                           onClick={() => setProfilePhoto(isProfile ? null : url)}
@@ -653,6 +535,17 @@ function VenueProfileContent({
                         >
                           {isProfile ? "✓ Profile" : "Profile"}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setBannerPhoto(isBanner ? null : url)}
+                          className={`flex-1 rounded py-1.5 text-[10px] font-bold transition-colors cursor-pointer ${
+                            isBanner
+                              ? "bg-primary text-white"
+                              : "bg-white/20 text-white backdrop-blur-sm hover:bg-primary"
+                          }`}
+                        >
+                          {isBanner ? "✓ Banner" : "Banner"}
+                        </button>
                       </div>
                     </div>
                   );
@@ -661,19 +554,6 @@ function VenueProfileContent({
 
               {/* Selected roles preview */}
               <div className="mt-4 flex flex-wrap gap-3">
-                <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${bannerPhoto ? "border-primary/30 bg-primary/5" : "border-border bg-muted/5"}`}>
-                  <div className="h-9 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/20">
-                    {bannerPhoto
-                      ? <img src={bannerPhoto} alt="" className="h-full w-full object-cover" />
-                      : <div className="flex h-full w-full items-center justify-center"><svg className="h-4 w-4 text-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159M3.75 21h16.5M20.25 3H3.75" /></svg></div>
-                    }
-                  </div>
-                  <div>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${bannerPhoto ? "text-primary" : "text-muted"}`}>Banner image</p>
-                    <p className="text-[10px] text-muted">{bannerPhoto ? "Hero on your profile page" : "Not set — hover a photo"}</p>
-                  </div>
-                </div>
-
                 <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${profilePhoto ? "border-violet-300 bg-violet-50" : "border-border bg-muted/5"}`}>
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-muted/20">
                     {profilePhoto
@@ -683,7 +563,20 @@ function VenueProfileContent({
                   </div>
                   <div>
                     <p className={`text-[10px] font-bold uppercase tracking-wide ${profilePhoto ? "text-violet-600" : "text-muted"}`}>Profile image</p>
-                    <p className="text-[10px] text-muted">{profilePhoto ? "Your venue avatar" : "Not set — hover a photo"}</p>
+                    <p className="text-[10px] text-muted">{profilePhoto ? "Your freelancer avatar" : "Not set — hover a photo"}</p>
+                  </div>
+                </div>
+
+                <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${bannerPhoto ? "border-primary/30 bg-primary/5" : "border-border bg-muted/5"}`}>
+                  <div className="h-9 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/20">
+                    {bannerPhoto
+                      ? <img src={bannerPhoto} alt="" className="h-full w-full object-cover" />
+                      : <div className="flex h-full w-full items-center justify-center"><svg className="h-4 w-4 text-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159M3.75 21h16.5" /></svg></div>
+                    }
+                  </div>
+                  <div>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${bannerPhoto ? "text-primary" : "text-muted"}`}>Banner image</p>
+                    <p className="text-[10px] text-muted">{bannerPhoto ? "Hero on your profile page" : "Not set — hover a photo"}</p>
                   </div>
                 </div>
               </div>
@@ -696,55 +589,7 @@ function VenueProfileContent({
         </div>
       </div>
 
-      </OnboardingHighlight>
-
-      {/* ── Section 3: Location ─────────────────────────────── */}
-      <OnboardingHighlight sectionId="tour-location" activeSectionId={activeTourSection} stepNumber={activeTourStep}>
-      <div id="tour-location" className="overflow-hidden rounded-2xl border border-border bg-card">
-        <SectionHeader
-          icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-            </svg>
-          }
-          title="Location"
-          description="Used to pin your venue on the map and show in searches"
-        />
-        <div className="p-5">
-          <label className="mb-1 block text-sm font-semibold text-foreground">Venue address</label>
-          <AddressAutocomplete
-            value={location}
-            onChange={(address, coords) => {
-              setLocation(address);
-              if (coords) {
-                setLatitude(coords.latitude);
-                setLongitude(coords.longitude);
-              } else {
-                setLatitude(undefined);
-                setLongitude(undefined);
-              }
-            }}
-            placeholder="Start typing your venue address..."
-            className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            hint="Select a suggestion to pin your venue precisely on the map."
-          />
-          {latitude != null && longitude != null && (() => {
-            const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-            if (!key) return null;
-            const url = `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=15&size=800x220&scale=2&markers=color:0x2563eb%7C${latitude},${longitude}&key=${key}`;
-            return (
-              <div className="mt-3 overflow-hidden rounded-xl border border-border">
-                <img src={url} alt="Map preview" className="h-[200px] w-full object-cover" />
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-
-      </OnboardingHighlight>
-
-      {/* ── Section 4: Specialties ──────────────────────────── */}
+      {/* ── Section 3: Specialties ──────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
@@ -753,7 +598,7 @@ function VenueProfileContent({
             </svg>
           }
           title="Specialties"
-          description="Types of beauty work your venue accommodates — helps freelancers find you"
+          description="The types of beauty work you offer — helps venues understand your skills"
         />
         <div className="p-5">
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
@@ -792,66 +637,7 @@ function VenueProfileContent({
         </div>
       </div>
 
-      {/* ── Section 5: Booth Policies ───────────────────────── */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
-        <SectionHeader
-          icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-            </svg>
-          }
-          title="Booth Policies"
-          description="Rules that freelancers agree to before booking — shown on your public profile"
-        />
-        <div className="p-5">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={policyInput}
-              onChange={(e) => setPolicyInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); addPolicy(); }
-              }}
-              placeholder="e.g. Clean station after each client, No walk-ins..."
-              className="flex-1 rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <button
-              type="button"
-              onClick={addPolicy}
-              className="shrink-0 rounded-lg bg-primary-light px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary hover:text-white cursor-pointer"
-            >
-              Add
-            </button>
-          </div>
-
-          {boothPolicies.length > 0 && (
-            <div className="mt-3 space-y-2">
-              {boothPolicies.map((policy, i) => (
-                <div
-                  key={policy}
-                  className="flex items-start gap-3 rounded-lg border border-border bg-background px-4 py-3 transition hover:border-primary/30"
-                >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-light text-xs font-bold text-primary">
-                    {i + 1}
-                  </span>
-                  <span className="flex-1 text-sm text-foreground">{policy}</span>
-                  <button
-                    type="button"
-                    onClick={() => removePolicy(policy)}
-                    className="shrink-0 text-muted hover:text-danger cursor-pointer transition-colors"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Section 6: Preferences ──────────────────────────── */}
+      {/* ── Section 4: Preferences ──────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <SectionHeader
           icon={
@@ -861,14 +647,14 @@ function VenueProfileContent({
             </svg>
           }
           title="Preferences"
-          description="Control how your profile appears to freelancers"
+          description="Control how your profile appears to venues"
         />
         <div className="p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-foreground">Show reviews</p>
               <p className="mt-0.5 text-xs text-muted">
-                Display freelancer reviews publicly on your profile page.
+                Display venue reviews publicly on your profile page.
               </p>
             </div>
             <button
@@ -912,19 +698,7 @@ function VenueProfileContent({
               {completionCount}/{completionItems.length} sections complete
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/venues/${venueId}`}
-              target="_blank"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              See Profile
-            </Link>
-
-            <button
+          <button
             type="button"
             onClick={handleSave}
             disabled={saving}
@@ -955,7 +729,6 @@ function VenueProfileContent({
               </>
             )}
           </button>
-          </div>
         </div>
       </div>
     </div>
@@ -975,7 +748,7 @@ const TIER_INFO = [
     scoreReq: "—",
     bookingReq: "0–4 bookings",
     description:
-      "Every new venue starts here. Reviews are collected during this period and used to set your first rank once you hit 5 completed bookings.",
+      "Every new freelancer starts here. Reviews are collected during this period and used to set your first rank once you hit 5 completed bookings.",
   },
   {
     tier: "bronze",
@@ -985,7 +758,7 @@ const TIER_INFO = [
     scoreReq: "0 – 59",
     bookingReq: "5+ bookings",
     description:
-      "Your first ranked tier. Indicates an active venue that's still building its reputation. Focus on fairness, clear house rules, and good communication to move up.",
+      "Your first ranked tier. Indicates an active freelancer still building their reputation. Focus on reliability, professionalism, and good communication to move up.",
   },
   {
     tier: "silver",
@@ -995,7 +768,7 @@ const TIER_INFO = [
     scoreReq: "60 – 74",
     bookingReq: "5+ bookings",
     description:
-      "A solid, reliable venue. Freelancers can book with confidence. Continued positive reviews on fairness and communication push you toward Gold.",
+      "A solid, reliable freelancer. Venues can accept requests with confidence. Continued positive reviews push you toward Gold.",
   },
   {
     tier: "gold",
@@ -1005,7 +778,7 @@ const TIER_INFO = [
     scoreReq: "75 – 89",
     bookingReq: "5+ bookings",
     description:
-      "A highly regarded venue. Freelancers actively seek out Gold venues for quality and consistency. You're in the top tier of everyday rankings.",
+      "A highly regarded freelancer. Venues actively seek out Gold freelancers for quality and professionalism. You're in the top tier of everyday rankings.",
   },
   {
     tier: "platinum",
@@ -1015,7 +788,7 @@ const TIER_INFO = [
     scoreReq: "90+",
     bookingReq: "20+ bookings",
     description:
-      "Reserved for exceptional venues with a long track record of near-perfect reviews. Both thresholds must be met simultaneously — score and booking count.",
+      "Reserved for exceptional freelancers with a long track record of near-perfect reviews. Both thresholds must be met simultaneously — score and booking count.",
   },
   {
     tier: "trailblazer",
@@ -1031,22 +804,22 @@ const TIER_INFO = [
 
 const SCORE_DIMENSIONS = [
   {
-    label: "Fairness",
+    label: "Professionalism",
     weight: "40%",
     color: "bg-primary",
-    description: "How fairly you apply house rules. Are rules clearly stated and enforced consistently?",
+    description: "How professional and prepared you are on the day. Did you arrive on time, keep your station clean, and follow venue rules?",
   },
   {
-    label: "Freelancer Satisfaction",
+    label: "Venue Satisfaction",
     weight: "40%",
     color: "bg-accent",
-    description: "Whether freelancers felt the listing was accurate and communication was good throughout.",
+    description: "Whether the venue felt your conduct matched your profile and communication was clear throughout.",
   },
   {
     label: "Payment Reliability",
     weight: "10%",
     color: "bg-info",
-    description: "Timely and clear handling of deposits, payments, and refunds.",
+    description: "Timely payment of booth rental fees and any agreed charges.",
   },
   {
     label: "No Disputes",
@@ -1056,11 +829,11 @@ const SCORE_DIMENSIONS = [
   },
 ];
 
-function VenueTrustTab({ venueId }: { venueId: string }) {
+function FreelancerTrustTab({ renterId }: { renterId: string }) {
   return (
     <div className="space-y-5 pb-10">
       {/* Current trust profile */}
-      <TrustProfileCard accountId={venueId} role="venue" />
+      <TrustProfileCard accountId={renterId} role="renter" />
 
       {/* How your score is calculated */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -1072,7 +845,7 @@ function VenueTrustTab({ venueId }: { venueId: string }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-foreground">How Your Score is Calculated</p>
-            <p className="text-xs text-muted">A weighted average of four dimensions rated by freelancers after each booking</p>
+            <p className="text-xs text-muted">A weighted average of four dimensions rated by venues after each booking</p>
           </div>
         </div>
         <div className="divide-y divide-border">
@@ -1095,8 +868,7 @@ function VenueTrustTab({ venueId }: { venueId: string }) {
           <p className="text-xs text-muted leading-relaxed">
             Ratings are collected on a 1–5 star scale and converted to a 0–100 score.
             Your public score and tier only update at every 5th completed booking to preserve
-            reviewer anonymity — so individual ratings can&apos;t be traced back to a single
-            freelancer.
+            reviewer anonymity — so individual ratings can&apos;t be traced back to a single venue.
           </p>
         </div>
       </div>
@@ -1151,23 +923,23 @@ function VenueTrustTab({ venueId }: { venueId: string }) {
           {[
             {
               icon: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-              title: "Write clear, honest house rules",
-              body: "Fairness is your biggest score driver at 40%. Freelancers rate whether your rules were enforced consistently and whether they felt fair on arrival. Keep rules updated and specific.",
+              title: "Arrive on time and prepared",
+              body: "Professionalism is your biggest score driver at 40%. Venues rate whether you arrived punctually, kept your station clean, and followed their house rules. Consistency here makes the biggest difference.",
             },
             {
               icon: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
-              title: "Respond to messages quickly",
-              body: "Communication is part of the Satisfaction score. Prompt replies before and after bookings signal professionalism and build freelancer confidence in your venue.",
+              title: "Communicate clearly and promptly",
+              body: "Communication is part of the Satisfaction score. Respond to messages quickly, confirm booking details in advance, and flag any changes early — venues appreciate proactive freelancers.",
             },
             {
-              icon: "M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z",
-              title: "Keep your listing accurate",
-              body: "If what freelancers see in your listing matches what they find on arrival, satisfaction scores stay high. Update photos, amenities, and descriptions whenever anything changes.",
+              icon: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z",
+              title: "Keep your profile accurate",
+              body: "If your skills and specialties match what you deliver on the day, satisfaction scores stay high. Update your bio and specialties whenever your services change.",
             },
             {
               icon: "M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-              title: "Handle payments cleanly",
-              body: "Payment reliability counts for 10%. Clear refund policies, prompt deposit returns, and no unexpected charges directly boost this dimension.",
+              title: "Pay booth fees promptly",
+              body: "Payment reliability counts for 10%. Paying on time, following the agreed payment method, and raising any billing questions before the booking keeps this dimension high.",
             },
           ].map((tip) => (
             <div key={tip.title} className="flex items-start gap-4 px-5 py-4">

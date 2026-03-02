@@ -4,7 +4,7 @@ import { connectDB } from "@/lib/db";
 import { TrustReviewModel } from "@/models/TrustReview";
 import { BookingRequestModel } from "@/models/BookingRequest";
 import { checkAndPublishReviews } from "@/lib/trustEngine";
-import type { TrustIssueFlag } from "@/lib/types";
+import type { TrustIssueFlag, TrustDimensionRatings } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -73,11 +73,13 @@ export async function POST(req: NextRequest) {
     const {
       bookingId,
       quickRating,
+      dimensionRatings,
       wouldBookAgain,
       issueFlags,
     } = body as {
       bookingId: string;
       quickRating: number;
+      dimensionRatings?: TrustDimensionRatings;
       wouldBookAgain?: boolean;
       issueFlags?: TrustIssueFlag[];
     };
@@ -144,6 +146,7 @@ export async function POST(req: NextRequest) {
       reviewerRole: role,
       revieweeAccountId,
       quickRating,
+      dimensionRatings: dimensionRatings ?? {},
       wouldBookAgain: wouldBookAgain ?? null,
       issueFlags: issueFlags ?? [],
       isPublished: false,

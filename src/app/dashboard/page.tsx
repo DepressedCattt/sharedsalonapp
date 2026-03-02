@@ -705,6 +705,11 @@ function VenueDashboard() {
 // ────────────────────────────────────────────────────────────
 function RenterDashboard() {
   const { user, bookingRequests } = useAuth();
+  const [dashTab, setDashTab] = useState<"requests" | "history">("requests");
+
+  // Booking History tab state
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | "all">("all");
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>("month");
 
   const myRequests = useMemo(
     () => bookingRequests.filter((b) => b.renterId === user?.accountId),
@@ -724,15 +729,46 @@ function RenterDashboard() {
   const approvedCount = myRequests.filter((b) => b.status === "approved").length;
   const pendingCount = myRequests.filter((b) => b.status === "pending").length;
 
+  // Booking History tab data
+  const periodBookings = useMemo(
+    () => filterByPeriod(myRequests, timePeriod),
+    [myRequests, timePeriod]
+  );
+
+  const filtered = useMemo(
+    () => statusFilter === "all" ? periodBookings : periodBookings.filter((b) => b.status === statusFilter),
+    [periodBookings, statusFilter]
+  );
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: periodBookings.length };
+    for (const s of ALL_STATUSES) c[s] = periodBookings.filter((b) => b.status === s).length;
+    return c;
+  }, [periodBookings]);
+
+  const totalSpent = useMemo(
+    () => periodBookings
+      .filter((b) => b.status === "approved" || b.status === "completed")
+      .reduce((sum, b) => sum + (b.price ?? 0), 0),
+    [periodBookings]
+  );
+
+  const chartData = useMemo(
+    () => buildChartData(myRequests, timePeriod),
+    [myRequests, timePeriod]
+  );
+
+  const periodLabel = TIME_PERIODS.find((p) => p.value === timePeriod)?.label ?? "";
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">My Booking Requests</h1>
+            <h1 className="text-3xl font-bold text-foreground">My Requests</h1>
             <p className="mt-1 text-muted">Track the status of your chair rental requests</p>
           </div>
           <Link
@@ -743,75 +779,205 @@ function RenterDashboard() {
           </Link>
         </div>
 
-        {/* Stats + Trust Profile */}
-        <div className="mb-8 grid gap-6 lg:grid-cols-[1fr_300px]">
-          <div className="grid gap-4 sm:grid-cols-3 content-start">
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="text-sm text-muted">Total Requests</p>
-              <p className="mt-1 text-2xl font-bold text-foreground">{myRequests.length}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="text-sm text-muted">Approved</p>
-              <p className="mt-1 text-2xl font-bold text-success">{approvedCount}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="text-sm text-muted">Pending</p>
-              <p className="mt-1 text-2xl font-bold text-warning">{pendingCount}</p>
-            </div>
-          </div>
+        {/* Sub-tab bar */}
+        <div className="mb-8 flex gap-1 rounded-xl bg-muted/10 p-1">
+          <button
+            type="button"
+            onClick={() => setDashTab("requests")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all cursor-pointer ${
+              dashTab === "requests"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            My Requests
+            {pendingCount > 0 && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${dashTab === "requests" ? "bg-primary/10 text-primary" : "bg-muted/20 text-muted"}`}>
+                {pendingCount} pending
+              </span>
+            )}
+          </button>
 
-          {user?.accountId && (
-            <TrustProfileCard accountId={user.accountId} role="renter" />
-          )}
+          <button
+            type="button"
+            onClick={() => setDashTab("history")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all cursor-pointer ${
+              dashTab === "history"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+            </svg>
+            Booking History
+          </button>
         </div>
 
-        {/* Active Recurring Bookings */}
-        {activeRecurring.length > 0 && (
-          <div className="mb-8">
-            <div className="mb-4 flex items-center gap-3">
-              <h2 className="text-xl font-bold text-foreground">Active Bookings</h2>
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary border border-primary/20">
-                {activeRecurring.length} active
-              </span>
+        {/* ══ MY REQUESTS TAB ══════════════════════════════════ */}
+        {dashTab === "requests" && (
+          <>
+            {/* Stats + Trust Profile */}
+            <div className="mb-8 grid gap-6 lg:grid-cols-[1fr_300px]">
+              <div className="grid gap-4 sm:grid-cols-3 content-start">
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <p className="text-sm text-muted">Total Requests</p>
+                  <p className="mt-1 text-2xl font-bold text-foreground">{myRequests.length}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <p className="text-sm text-muted">Approved</p>
+                  <p className="mt-1 text-2xl font-bold text-success">{approvedCount}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <p className="text-sm text-muted">Pending</p>
+                  <p className="mt-1 text-2xl font-bold text-warning">{pendingCount}</p>
+                </div>
+              </div>
+
+              {user?.accountId && (
+                <TrustProfileCard accountId={user.accountId} role="renter" />
+              )}
             </div>
-            <div className="space-y-3">
-              {activeRecurring.map((booking) => (
-                <BookingCard key={booking.id} booking={booking} perspective="renter" />
-              ))}
+
+            {/* Active Recurring Bookings */}
+            {activeRecurring.length > 0 && (
+              <div className="mb-8">
+                <div className="mb-4 flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-foreground">Active Bookings</h2>
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary border border-primary/20">
+                    {activeRecurring.length} active
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {activeRecurring.map((booking) => (
+                    <BookingCard key={booking.id} booking={booking} perspective="renter" />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Requests List */}
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-foreground">Recent Requests</h2>
+              <button
+                type="button"
+                onClick={() => setDashTab("history")}
+                className="text-sm font-medium text-primary hover:text-primary-dark transition-colors cursor-pointer"
+              >
+                View full history &rarr;
+              </button>
             </div>
-          </div>
+            {otherRequests.length > 0 ? (
+              <div className="space-y-3">
+                {otherRequests.map((booking) => (
+                  <BookingCard key={booking.id} booking={booking} perspective="renter" showComplete={booking.status === "approved"} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16">
+                <svg className="h-10 w-10 text-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                <p className="mt-3 font-medium text-foreground">No requests yet</p>
+                <p className="mt-1 text-sm text-muted">Browse listings and request a chair to get started</p>
+                <Link
+                  href="/listings"
+                  className="mt-4 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+                >
+                  Find a Chair
+                </Link>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Requests List */}
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-foreground">Recent Requests</h2>
-          <Link
-            href="/bookings"
-            className="text-sm font-medium text-primary hover:text-primary-dark transition-colors"
-          >
-            View full history &rarr;
-          </Link>
-        </div>
-        {otherRequests.length > 0 ? (
-          <div className="space-y-3">
-            {otherRequests.map((booking) => (
-              <BookingCard key={booking.id} booking={booking} perspective="renter" showComplete={booking.status === "approved"} />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16">
-            <svg className="h-10 w-10 text-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-            </svg>
-            <p className="mt-3 font-medium text-foreground">No requests yet</p>
-            <p className="mt-1 text-sm text-muted">Browse listings and request a chair to get started</p>
-            <Link
-              href="/listings"
-              className="mt-4 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-dark"
-            >
-              Find a Chair
-            </Link>
-          </div>
+        {/* ══ BOOKING HISTORY TAB ══════════════════════════════ */}
+        {dashTab === "history" && (
+          <>
+            {/* Time Period Filter */}
+            <div className="mb-6">
+              <TimePeriodSelector value={timePeriod} onChange={setTimePeriod} />
+            </div>
+
+            {/* Stats */}
+            <div className="mb-6 grid gap-4 sm:grid-cols-4">
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="text-sm text-muted">Bookings</p>
+                <p className="mt-1 text-2xl font-bold text-foreground">{counts.all}</p>
+                <p className="mt-1 text-xs text-muted">{periodLabel}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="text-sm text-muted">Completed</p>
+                <p className="mt-1 text-2xl font-bold text-blue-600">{counts.completed ?? 0}</p>
+                <p className="mt-1 text-xs text-muted">{periodLabel}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="text-sm text-muted">Approved</p>
+                <p className="mt-1 text-2xl font-bold text-success">{counts.approved ?? 0}</p>
+                <p className="mt-1 text-xs text-muted">{periodLabel}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="text-sm text-muted">Total Spent</p>
+                <p className="mt-1 text-2xl font-bold text-foreground">${totalSpent}</p>
+                <p className="mt-1 text-xs text-muted">{periodLabel}</p>
+              </div>
+            </div>
+
+            {/* Spending Chart */}
+            <div className="mb-8">
+              <RevenueChart
+                data={chartData}
+                label={`Spending — ${periodLabel}`}
+                color="#7c3aed"
+              />
+            </div>
+
+            {/* Status Filter pills */}
+            <div className="mb-6 flex flex-wrap gap-2">
+              {(["all", ...ALL_STATUSES] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
+                    statusFilter === s
+                      ? "bg-primary text-white"
+                      : "bg-muted/20 text-muted hover:bg-muted/40 hover:text-foreground"
+                  }`}
+                >
+                  {s === "all" ? "All" : STATUS_LABEL[s]}
+                  <span className="ml-1.5 text-xs opacity-75">({counts[s] ?? 0})</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Booking list */}
+            {filtered.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {filtered.map((booking) => (
+                  <BookingCard key={booking.id} booking={booking} perspective="renter" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16">
+                <svg className="h-10 w-10 text-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                <p className="mt-3 font-medium text-foreground">
+                  {statusFilter === "all" ? "No bookings in this period" : `No ${STATUS_LABEL[statusFilter as BookingStatus].toLowerCase()} bookings`}
+                </p>
+                <p className="mt-1 text-sm text-muted">Browse listings and book a chair to get started.</p>
+                <Link
+                  href="/listings"
+                  className="mt-4 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+                >
+                  Find a Chair
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

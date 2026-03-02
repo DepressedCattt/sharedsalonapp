@@ -228,7 +228,7 @@ export default function ListingDetailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </Link>
-            {venueTrustProfile && venueTrustProfile.tier !== "unranked" && (
+            {venueTrustProfile && venueTrustProfile.tier !== "fresh" && (
               <TrustBadge profile={venueTrustProfile} size="sm" />
             )}
           </div>
@@ -648,8 +648,8 @@ export default function ListingDetailPage() {
                             <p className="mt-1 text-[10px] text-muted">Satisfaction</p>
                           </div>
                           <div className="rounded-xl border border-white/70 bg-white/50 px-2 py-2.5">
-                            <p className="text-base font-bold leading-none text-foreground">{vm.retentionRate}%</p>
-                            <p className="mt-1 text-[10px] text-muted">Retention</p>
+                            <p className="text-base font-bold leading-none text-foreground">{vm.activeFreelancers}</p>
+                            <p className="mt-1 text-[10px] text-muted">Freelancers</p>
                           </div>
                           <div className="rounded-xl border border-white/70 bg-white/50 px-2 py-2.5">
                             <p className="text-base font-bold leading-none text-foreground">{vm.activeFreelancers}</p>
@@ -681,8 +681,7 @@ export default function ListingDetailPage() {
                           {[
                             { label: "Fairness",               score: vm.fairnessScore,    color: "bg-primary"  },
                             { label: "Freelancer Satisfaction", score: vm.satisfactionScore, color: "bg-accent"   },
-                            { label: "Retention Rate",          score: vm.retentionRate,     color: "bg-success"  },
-                            { label: "Payment Reliability",     score: vm.paymentScore,      color: "bg-blue-500" },
+                            { label: "Payment Reliability",     score: vm.paymentScore,      color: "bg-success"  },
                           ].map(({ label, score, color }) => (
                             <div key={label}>
                               <div className="mb-1 flex items-center justify-between">

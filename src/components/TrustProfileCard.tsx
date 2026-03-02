@@ -4,14 +4,15 @@ import { useEffect, useState } from "react";
 import type { TrustProfile, TrustTier } from "@/lib/types";
 import TrustBadge from "@/components/TrustBadge";
 
-// ── Tier label / gradient mapping ─────────────────────────────────────────────
+// ── Tier gradient mapping ──────────────────────────────────────────────────────
 
 const TIER_GRADIENT: Record<TrustTier, string> = {
-  unranked: "from-slate-50 to-slate-100/60",
+  fresh: "from-slate-50 to-slate-100/60",
   bronze: "from-amber-50 to-amber-100/60",
   silver: "from-slate-50 to-slate-100/60",
   gold: "from-yellow-50 to-yellow-100/60",
   platinum: "from-indigo-50 to-indigo-100/60",
+  trailblazer: "from-amber-50 via-orange-50 to-amber-100/60",
 };
 
 // ── Score bar ─────────────────────────────────────────────────────────────────
@@ -62,6 +63,8 @@ interface TrustProfileCardProps {
   role: "venue" | "renter";
   /** Pre-loaded profile — if omitted the component fetches it. */
   profile?: TrustProfile;
+  /** Show internal pending score (for admin/dev use). */
+  showPendingScore?: boolean;
   className?: string;
 }
 
@@ -69,11 +72,10 @@ export default function TrustProfileCard({
   accountId,
   role,
   profile: profileProp,
+  showPendingScore = false,
   className = "",
 }: TrustProfileCardProps) {
-  const [profile, setProfile] = useState<TrustProfile | null>(
-    profileProp ?? null
-  );
+  const [profile, setProfile] = useState<TrustProfile | null>(profileProp ?? null);
   const [loading, setLoading] = useState(!profileProp);
   const [error, setError] = useState("");
 
@@ -113,12 +115,17 @@ export default function TrustProfileCard({
     );
   }
 
-  if (error || !profile) {
-    return null;
-  }
+  if (error || !profile) return null;
 
   const { tier, renterMetrics, venueMetrics } = profile;
-  const gradient = TIER_GRADIENT[tier];
+  const gradient = TIER_GRADIENT[tier] ?? TIER_GRADIENT.fresh;
+  const isFresh = tier === "fresh";
+  const isTrailblazer = tier === "trailblazer";
+
+  const completedCount =
+    role === "renter"
+      ? renterMetrics?.totalCompleted ?? 0
+      : venueMetrics?.totalCompleted ?? 0;
 
   return (
     <div
@@ -130,57 +137,51 @@ export default function TrustProfileCard({
           Trust Profile
         </p>
         <TrustBadge profile={profile} size="lg" />
+
+        {/* Trailblazer descriptor */}
+        {isTrailblazer && (
+          <p className="mt-3 text-xs text-orange-600/80 leading-relaxed">
+            Recognised as an early adopter of SharedSalon. This badge is permanently granted and sits outside the standard ranking system.
+          </p>
+        )}
       </div>
 
-      {/* Score breakdown */}
+      {/* Score breakdown or fresh state */}
       <div className="px-5 py-4">
-        {role === "renter" && renterMetrics ? (
+        {isFresh ? (
+          <div className="py-2 text-center">
+            <div className="mb-3 flex items-center justify-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <div
+                  key={n}
+                  className={`h-2 w-2 rounded-full transition-colors ${
+                    n <= completedCount ? "bg-primary" : "bg-border"
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-sm font-medium text-foreground">
+              {completedCount} of 5 bookings completed
+            </p>
+            <p className="mt-1 text-xs text-muted leading-relaxed">
+              Your first rank is assigned after 5 completed bookings. Reviews are being collected in the meantime.
+            </p>
+          </div>
+        ) : role === "renter" && renterMetrics ? (
           <>
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted">
               Score Breakdown
             </p>
             <div className="space-y-3">
-              <ScoreBar
-                label="Reliability"
-                score={renterMetrics.reliabilityScore}
-                color="bg-primary"
-              />
-              <ScoreBar
-                label="Professionalism"
-                score={renterMetrics.professionalismScore}
-                color="bg-accent"
-              />
-              <ScoreBar
-                label="Cleanliness"
-                score={renterMetrics.cleanlinessScore}
-                color="bg-success"
-              />
-              <ScoreBar
-                label="Responsiveness"
-                score={renterMetrics.responsivenessScore}
-                color="bg-info"
-              />
-              <ScoreBar
-                label="Repeat Bookings"
-                score={renterMetrics.repeatRate}
-                color="bg-warning"
-              />
+              <ScoreBar label="Reliability" score={renterMetrics.reliabilityScore} color="bg-primary" />
+              <ScoreBar label="Professionalism" score={renterMetrics.professionalismScore} color="bg-accent" />
+              <ScoreBar label="Cleanliness" score={renterMetrics.cleanlinessScore} color="bg-success" />
+              <ScoreBar label="Responsiveness" score={renterMetrics.responsivenessScore} color="bg-info" />
             </div>
-
-            {/* Key stats */}
             <div className="mt-5 grid grid-cols-3 gap-2">
-              <StatChip
-                label="Completed"
-                value={renterMetrics.totalCompleted}
-              />
-              <StatChip
-                label="Cancellations"
-                value={renterMetrics.totalCancelled}
-              />
-              <StatChip
-                label="Disputes"
-                value={renterMetrics.disputeCount}
-              />
+              <StatChip label="Completed" value={renterMetrics.totalCompleted} />
+              <StatChip label="Cancellations" value={renterMetrics.totalCancelled} />
+              <StatChip label="Disputes" value={renterMetrics.disputeCount} />
             </div>
           </>
         ) : role === "venue" && venueMetrics ? (
@@ -189,42 +190,14 @@ export default function TrustProfileCard({
               Score Breakdown
             </p>
             <div className="space-y-3">
-              <ScoreBar
-                label="Fairness"
-                score={venueMetrics.fairnessScore}
-                color="bg-primary"
-              />
-              <ScoreBar
-                label="Freelancer Satisfaction"
-                score={venueMetrics.satisfactionScore}
-                color="bg-accent"
-              />
-              <ScoreBar
-                label="Retention Rate"
-                score={venueMetrics.retentionRate}
-                color="bg-success"
-              />
-              <ScoreBar
-                label="Payment Reliability"
-                score={venueMetrics.paymentScore}
-                color="bg-info"
-              />
+              <ScoreBar label="Fairness" score={venueMetrics.fairnessScore} color="bg-primary" />
+              <ScoreBar label="Freelancer Satisfaction" score={venueMetrics.satisfactionScore} color="bg-accent" />
+              <ScoreBar label="Payment Reliability" score={venueMetrics.paymentScore} color="bg-info" />
             </div>
-
-            {/* Key stats */}
             <div className="mt-5 grid grid-cols-3 gap-2">
-              <StatChip
-                label="Completed"
-                value={venueMetrics.totalCompleted}
-              />
-              <StatChip
-                label="Freelancers"
-                value={venueMetrics.activeFreelancers}
-              />
-              <StatChip
-                label="Disputes"
-                value={venueMetrics.disputeCount}
-              />
+              <StatChip label="Completed" value={venueMetrics.totalCompleted} />
+              <StatChip label="Freelancers" value={venueMetrics.activeFreelancers} />
+              <StatChip label="Disputes" value={venueMetrics.disputeCount} />
             </div>
           </>
         ) : (
@@ -235,13 +208,31 @@ export default function TrustProfileCard({
       </div>
 
       {/* Trust score footer */}
-      <div className="flex items-center justify-between border-t border-border/60 px-5 py-3">
-        <span className="text-xs text-muted">Trust Index</span>
-        <span className="text-sm font-bold text-foreground">
-          {profile.trustScore}
-          <span className="text-xs font-normal text-muted"> / 100</span>
-        </span>
-      </div>
+      {!isFresh && (
+        <div className="border-t border-border/60 px-5 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted">Trust Index</span>
+            <span className="text-sm font-bold text-foreground">
+              {profile.trustScore}
+              <span className="text-xs font-normal text-muted"> / 100</span>
+            </span>
+          </div>
+
+          {showPendingScore &&
+            profile.pendingTrustScore !== undefined &&
+            profile.pendingTrustScore !== profile.trustScore && (
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[10px] text-muted">
+                  Pending (next milestone)
+                </span>
+                <span className="text-[11px] font-semibold text-muted">
+                  {profile.pendingTrustScore}
+                  <span className="font-normal"> / 100</span>
+                </span>
+              </div>
+            )}
+        </div>
+      )}
     </div>
   );
 }

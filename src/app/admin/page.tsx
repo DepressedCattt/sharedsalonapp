@@ -103,6 +103,12 @@ const TEST_FLOWS = [
     description: "Populate with mock data",
     icon: "🌱",
   },
+  {
+    href: "/admin/trust",
+    label: "Trust Simulator",
+    description: "Inject reviews, test scoring, grant Trailblazer",
+    icon: "⚡",
+  },
 ];
 
 export default function AdminPage() {
@@ -360,6 +366,13 @@ export default function AdminPage() {
                   className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/[0.08] transition-colors"
                 >
                   Database Seeder →
+                </Link>
+
+                <Link
+                  href="/admin/trust"
+                  className="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 text-xs font-medium text-amber-400 hover:bg-amber-500/[0.1] transition-colors"
+                >
+                  Trust Simulator →
                 </Link>
 
                 {status === "authenticated" && (

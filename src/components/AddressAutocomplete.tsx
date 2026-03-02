@@ -47,6 +47,7 @@ export function AddressAutocomplete({
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       types: ["address"],
       fields: ["formatted_address", "geometry", "place_id"],
+      componentRestrictions: { country: "au" },
     });
 
     const listener = autocomplete.addListener("place_changed", () => {
@@ -75,7 +76,7 @@ export function AddressAutocomplete({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter full address (e.g. 123 High St, London)"
+          placeholder="Enter full address (e.g. 123 High St, Sydney NSW)"
           required={required}
           disabled={disabled}
           id={id}

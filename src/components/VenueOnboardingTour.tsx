@@ -34,7 +34,7 @@ const STEPS: TourStep[] = [
     tips: [
       { text: "Use your salon or studio's real name" },
       { text: "Keep it concise and recognisable" },
-      { text: '"Mayfair Beauty Studio" or "The Hair Lab"', accent: true },
+      { text: '"Paddington Beauty Studio" or "The Hair Lab"', accent: true },
     ],
     nextLabel: "Next: Bio",
   },

@@ -1,31 +1,74 @@
 import { connectDB } from "@/lib/db";
 import { BookingRequestModel } from "@/models/BookingRequest";
-import { ReviewModel } from "@/models/Review";
 import { TrustProfileModel } from "@/models/TrustProfile";
 import { TrustReviewModel } from "@/models/TrustReview";
 import type {
   TrustTier,
   RenterTrustMetrics,
   VenueTrustMetrics,
+  TrustDimensionRatings,
 } from "@/lib/types";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Map a 1–5 star rating to a 0–100 score. */
+function starsTo100(stars: number): number {
+  return Math.round(((stars - 1) / 4) * 100);
+}
+
+/** Map arrival status string to a reliability score 0–100. */
+function arrivalToScore(status: string | null | undefined): number {
+  if (status === "on_time") return 100;
+  if (status === "late") return 50;
+  if (status === "no_show") return 0;
+  return 70; // neutral fallback when no data
+}
+
+/**
+ * Safely cast the Mixed dimensionRatings field from a lean Mongoose document.
+ * Stored as Schema.Types.Mixed to avoid subdocument schema caching issues.
+ */
+function getDimRatings(review: { dimensionRatings?: unknown }): TrustDimensionRatings {
+  if (!review.dimensionRatings || typeof review.dimensionRatings !== "object") return {};
+  return review.dimensionRatings as TrustDimensionRatings;
+}
 
 // ── Tier Assignment ──────────────────────────────────────────────────────────
 
+/**
+ * Tiers:
+ *   Fresh       — < 5 completed bookings (calibration period, no rank)
+ *   Bronze      — score 0–59, 5+ bookings
+ *   Silver      — score 60–74, 5+ bookings
+ *   Gold        — score 75–94, 5+ bookings
+ *   Platinum    — score ≥ 90 AND 20+ bookings (both gates required)
+ *   Trailblazer — foundingVerified = true (separate track, admin-granted only)
+ *
+ * The score is the raw weighted composite — no confidence weighting applied.
+ * Booking count only gates Fresh→ranked and the Platinum threshold.
+ *
+ * Public tier/score only updates at every 5th completed booking (milestone)
+ * to prevent reviewers from being identified by immediate rank shifts.
+ */
 export function assignTier(
   score: number,
   completedCount: number,
   foundingVerified: boolean
 ): TrustTier {
-  if (foundingVerified) return "platinum"; // founding verified always display at platinum minimum
-  if (completedCount < 1) return "unranked";
-  if (completedCount >= 25 && score >= 85) return "platinum";
-  if (completedCount >= 12 && score >= 72) return "gold";
-  if (completedCount >= 5 && score >= 60) return "silver";
+  if (foundingVerified) return "trailblazer";
+  if (completedCount < 5) return "fresh";
+  if (completedCount >= 20 && score >= 90) return "platinum";
+  if (score >= 75) return "gold";
+  if (score >= 60) return "silver";
   return "bronze";
 }
 
 // ── Renter Score Computation ─────────────────────────────────────────────────
 
+/**
+ * Weights: Reliability 40% · Professionalism 30% · Cleanliness 20% · Responsiveness 10%
+ * Repeat rate is intentionally excluded — it reflects habit, not quality.
+ */
 export async function computeRenterTrustScore(accountId: string): Promise<{
   score: number;
   metrics: RenterTrustMetrics;
@@ -36,69 +79,80 @@ export async function computeRenterTrustScore(accountId: string): Promise<{
   const renterCancelled = bookings.filter(
     (b) => b.cancelledBy === "renter"
   ).length;
-  const declined = bookings.filter(
-    (b) => b.status === "declined" && b.cancelledBy === "renter"
-  ).length;
 
-  const reliabilityDenominator = completed + renterCancelled + declined;
-  const reliabilityScore =
-    reliabilityDenominator > 0
-      ? Math.round((completed / reliabilityDenominator) * 100)
-      : completed > 0
-      ? 100
-      : 70; // neutral default for new accounts
-
-  // Passive: repeat venue rate
-  const approvedBookings = bookings.filter(
-    (b) => b.status === "completed" || b.status === "approved"
-  );
-  const venueIds = approvedBookings.map((b) => b.venueId);
-  const uniqueVenues = new Set(venueIds).size;
-  const repeatRate =
-    venueIds.length > 0 && uniqueVenues > 0
-      ? Math.round(
-          ((venueIds.length - uniqueVenues) / venueIds.length) * 100
-        )
-      : 0;
-
-  // Trust reviews (venue → renter): professionalism + cleanliness
+  // Published reviews about this renter (written by venues)
   const publishedReviews = await TrustReviewModel.find({
     revieweeAccountId: accountId,
     reviewerRole: "venue",
     isPublished: true,
   }).lean();
 
-  let professionalismScore = 70; // neutral default
+  let reliabilityScore = 70;
+  let professionalismScore = 70;
   let cleanlinessScore = 70;
+  let responsivenessScore = 70;
 
   if (publishedReviews.length > 0) {
-    const avgRating =
-      publishedReviews.reduce((s, r) => s + r.quickRating, 0) /
-      publishedReviews.length;
-    // Map 1-5 star to 0-100
-    professionalismScore = Math.round(((avgRating - 1) / 4) * 100);
+    // Reliability from arrivalStatus answers
+    const arrivalScores = publishedReviews
+      .map((r) => getDimRatings(r).arrivalStatus)
+      .filter((s) => s != null)
+      .map((s) => arrivalToScore(s));
 
-    // Cleanliness: penalise for cleanliness issue flags
-    const cleanlinessFlags = publishedReviews.filter((r) =>
-      r.issueFlags.includes("cleanliness")
-    ).length;
-    const cleanlinessHitRate = cleanlinessFlags / publishedReviews.length;
-    cleanlinessScore = Math.round(Math.max(0, (1 - cleanlinessHitRate) * 100));
+    if (arrivalScores.length > 0) {
+      reliabilityScore = Math.round(
+        arrivalScores.reduce((s, v) => s + v, 0) / arrivalScores.length
+      );
+    }
+
+    // Professionalism from 1–5 rating
+    const profScores = publishedReviews
+      .map((r) => getDimRatings(r).professionalism)
+      .filter((v): v is number => v != null)
+      .map(starsTo100);
+
+    if (profScores.length > 0) {
+      professionalismScore = Math.round(
+        profScores.reduce((s, v) => s + v, 0) / profScores.length
+      );
+    }
+
+    // Cleanliness from 1–5 rating
+    const cleanScores = publishedReviews
+      .map((r) => getDimRatings(r).cleanliness)
+      .filter((v): v is number => v != null)
+      .map(starsTo100);
+
+    if (cleanScores.length > 0) {
+      cleanlinessScore = Math.round(
+        cleanScores.reduce((s, v) => s + v, 0) / cleanScores.length
+      );
+    }
+
+    // Responsiveness from communication 1–5 rating
+    const commScores = publishedReviews
+      .map((r) => getDimRatings(r).communication)
+      .filter((v): v is number => v != null)
+      .map(starsTo100);
+
+    if (commScores.length > 0) {
+      responsivenessScore = Math.round(
+        commScores.reduce((s, v) => s + v, 0) / commScores.length
+      );
+    }
   }
 
-  const responsivenessScore = 70; // v1 default — computed from message timestamps in v2
-
   const disputeCount = publishedReviews.filter((r) =>
-    r.issueFlags.includes("other")
+    r.issueFlags.some((f: string) =>
+      ["damage", "no_show", "rules_violation"].includes(f)
+    )
   ).length;
 
-  // Weighted composite score
-  const score = Math.round(
-    reliabilityScore * 0.3 +
-      professionalismScore * 0.25 +
-      cleanlinessScore * 0.15 +
-      responsivenessScore * 0.1 +
-      repeatRate * 0.2
+  const rawScore = Math.round(
+    reliabilityScore * 0.4 +
+      professionalismScore * 0.3 +
+      cleanlinessScore * 0.2 +
+      responsivenessScore * 0.1
   );
 
   const metrics: RenterTrustMetrics = {
@@ -106,60 +160,37 @@ export async function computeRenterTrustScore(accountId: string): Promise<{
     professionalismScore,
     cleanlinessScore,
     responsivenessScore,
-    repeatRate,
     totalCompleted: completed,
     totalCancelled: renterCancelled,
     disputeCount,
   };
 
-  return { score: Math.min(100, Math.max(0, score)), metrics };
+  return { score: Math.min(100, Math.max(0, rawScore)), metrics };
 }
 
 // ── Venue Score Computation ──────────────────────────────────────────────────
 
+/**
+ * Weights: Fairness 40% · Satisfaction 40% · Dispute penalty 10% · Payment 10%
+ * Retention rate is intentionally excluded — it reflects habit, not quality.
+ */
 export async function computeVenueTrustScore(accountId: string): Promise<{
   score: number;
   metrics: VenueTrustMetrics;
 }> {
   const bookings = await BookingRequestModel.find({ venueId: accountId }).lean();
 
-  const completedBookings = bookings.filter((b) => b.status === "completed");
-  const totalCompleted = completedBookings.length;
+  const totalCompleted = bookings.filter((b) => b.status === "completed").length;
 
-  // Retention: % of distinct renters who booked more than once
-  const renterBookingCounts: Record<string, number> = {};
-  bookings
-    .filter((b) => b.status === "completed" || b.status === "approved")
-    .forEach((b) => {
-      renterBookingCounts[b.renterId] =
-        (renterBookingCounts[b.renterId] ?? 0) + 1;
-    });
-  const distinctRenters = Object.keys(renterBookingCounts).length;
-  const repeatRenters = Object.values(renterBookingCounts).filter(
-    (c) => c > 1
-  ).length;
-  const retentionRate =
-    distinctRenters > 0
-      ? Math.round((repeatRenters / distinctRenters) * 100)
-      : 0;
-  const activeFreelancers = distinctRenters;
+  // Active freelancers (informational only — not used in scoring)
+  const renterIds = new Set(
+    bookings
+      .filter((b) => b.status === "completed" || b.status === "approved")
+      .map((b) => b.renterId)
+  );
+  const activeFreelancers = renterIds.size;
 
-  // Satisfaction from existing detailed reviews (renter → listing)
-  const detailedReviews = await ReviewModel.find({ venueId: accountId }).lean();
-  let satisfactionScore = 70;
-  if (detailedReviews.length > 0) {
-    const avgOverall =
-      detailedReviews.reduce((s, r) => {
-        const avg =
-          (r.scores.cleanliness + r.scores.accuracy + r.scores.communication) /
-          3;
-        return s + avg;
-      }, 0) / detailedReviews.length;
-    // Convert 1-10 scale to 0-100
-    satisfactionScore = Math.round(((avgOverall - 1) / 9) * 100);
-  }
-
-  // Trust reviews (renter → venue): fairness
+  // Published trust reviews about this venue (written by renters)
   const publishedTrustReviews = await TrustReviewModel.find({
     revieweeAccountId: accountId,
     reviewerRole: "renter",
@@ -167,31 +198,48 @@ export async function computeVenueTrustScore(accountId: string): Promise<{
   }).lean();
 
   let fairnessScore = 70;
-  if (publishedTrustReviews.length > 0) {
-    const avgRating =
-      publishedTrustReviews.reduce((s, r) => s + r.quickRating, 0) /
-      publishedTrustReviews.length;
-    fairnessScore = Math.round(((avgRating - 1) / 4) * 100);
+  let satisfactionScore = 70;
+  const paymentScore = 70; // v1 default — bumped to 95 with verified payment in v2
 
-    // Incorporate trust reviews into satisfaction as well
-    if (detailedReviews.length > 0) {
-      satisfactionScore = Math.round((satisfactionScore + fairnessScore) / 2);
-    } else {
-      satisfactionScore = fairnessScore;
+  if (publishedTrustReviews.length > 0) {
+    // Fairness from 1–5 rating
+    const fairScores = publishedTrustReviews
+      .map((r) => getDimRatings(r).fairness)
+      .filter((v): v is number => v != null)
+      .map(starsTo100);
+
+    if (fairScores.length > 0) {
+      fairnessScore = Math.round(
+        fairScores.reduce((s, v) => s + v, 0) / fairScores.length
+      );
+    }
+
+    // Satisfaction: blend accuracy + communication ratings
+    const satInputs: number[] = [];
+    publishedTrustReviews.forEach((r) => {
+      const dr = getDimRatings(r);
+      if (dr.accuracy != null) satInputs.push(starsTo100(dr.accuracy));
+      if (dr.communication != null) satInputs.push(starsTo100(dr.communication));
+    });
+
+    if (satInputs.length > 0) {
+      satisfactionScore = Math.round(
+        satInputs.reduce((s, v) => s + v, 0) / satInputs.length
+      );
     }
   }
 
   const disputeCount = publishedTrustReviews.filter((r) =>
-    r.issueFlags.some((f: string) => ["rules", "other"].includes(f))
+    r.issueFlags.some((f: string) =>
+      ["rules_changed", "payment_issue", "listing_inaccurate"].includes(f)
+    )
   ).length;
+
   const disputeScore = Math.max(0, 100 - disputeCount * 20);
 
-  const paymentScore = 70; // v1 default — bumped to 95 with verified payment
-
-  const score = Math.round(
-    fairnessScore * 0.3 +
-      satisfactionScore * 0.3 +
-      retentionRate * 0.2 +
+  const rawScore = Math.round(
+    fairnessScore * 0.4 +
+      satisfactionScore * 0.4 +
       disputeScore * 0.1 +
       paymentScore * 0.1
   );
@@ -199,52 +247,73 @@ export async function computeVenueTrustScore(accountId: string): Promise<{
   const metrics: VenueTrustMetrics = {
     fairnessScore,
     satisfactionScore,
-    retentionRate,
     paymentScore,
     activeFreelancers,
     totalCompleted,
     disputeCount,
   };
 
-  return { score: Math.min(100, Math.max(0, score)), metrics };
+  return { score: Math.min(100, Math.max(0, rawScore)), metrics };
 }
 
 // ── Upsert TrustProfile ──────────────────────────────────────────────────────
 
+/**
+ * Recomputes the trust profile for a given account.
+ *
+ * - pendingTrustScore is always updated (internal, admin-visible).
+ * - trustScore and tier only update at every 5th completed booking (milestone)
+ *   to prevent reviewers from being identified by immediate rank shifts.
+ * - The first milestone is at 5 bookings, which is also when the account
+ *   graduates from the "Fresh" calibration tier.
+ */
 export async function upsertTrustProfile(
   accountId: string,
   role: "venue" | "renter"
 ) {
   await connectDB();
 
-  let score: number;
+  let rawScore: number;
   let renterMetrics: RenterTrustMetrics | undefined;
   let venueMetrics: VenueTrustMetrics | undefined;
   let completedCount = 0;
 
   if (role === "renter") {
     const result = await computeRenterTrustScore(accountId);
-    score = result.score;
+    rawScore = result.score;
     renterMetrics = result.metrics;
     completedCount = result.metrics.totalCompleted;
   } else {
     const result = await computeVenueTrustScore(accountId);
-    score = result.score;
+    rawScore = result.score;
     venueMetrics = result.metrics;
     completedCount = result.metrics.totalCompleted;
   }
 
-  const existing = await TrustProfileModel.findOne({ accountId }).lean();
-  const foundingVerified = (existing as { foundingVerified?: boolean })?.foundingVerified ?? false;
-  const tier = assignTier(score, completedCount, foundingVerified);
+  const existing = await TrustProfileModel.findOne({ accountId }).lean() as {
+    foundingVerified?: boolean;
+    tier?: string;
+    trustScore?: number;
+  } | null;
 
-  const updatePayload = {
+  const foundingVerified = existing?.foundingVerified ?? false;
+  const newTier = assignTier(rawScore, completedCount, foundingVerified);
+
+  // Milestone check: only publish tier/score at every 5th booking
+  const isMilestone = completedCount > 0 && completedCount % 5 === 0;
+
+  const updatePayload: Record<string, unknown> = {
     role,
-    tier,
-    trustScore: score,
+    pendingTrustScore: rawScore,
     lastCalculatedAt: new Date(),
     ...(role === "renter" ? { renterMetrics } : { venueMetrics }),
   };
+
+  // On milestone (or first time with no existing profile): update public fields
+  if (isMilestone || !existing) {
+    updatePayload.tier = newTier;
+    updatePayload.trustScore = rawScore;
+  }
 
   const profile = await TrustProfileModel.findOneAndUpdate(
     { accountId },
