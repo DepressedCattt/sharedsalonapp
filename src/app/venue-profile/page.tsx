@@ -9,6 +9,8 @@ import { useAuth } from "@/context/AuthContext";
 import { VenueOnboardingTour, OnboardingHighlight } from "@/components/VenueOnboardingTour";
 import TrustProfileCard from "@/components/TrustProfileCard";
 import { fetchWithRetry } from "@/lib/fetchRetry";
+import { getCached, setCached } from "@/lib/apiCache";
+import type { VenueProfile } from "@/lib/types";
 
 const SPECIALTY_OPTIONS = [
   { label: "Hair", icon: "M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.522 4.82 3.889 6.21L6 21l4.353-1.813A10.065 10.065 0 0012 19.23c4.97 0 9-3.186 9-7.115C21 8.185 16.97 5 12 5V3z" },
@@ -227,24 +229,39 @@ function VenueProfileContent({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const cacheKey = `venue_profile_${venueId}`;
+
+    function applyData(data: VenueProfile) {
+      setDisplayName(data.displayName || venueName);
+      setBio(data.bio || "");
+      setLocation(data.location || "");
+      setLatitude(data.latitude);
+      setLongitude(data.longitude);
+      const loadedPhotos = data.photos || [];
+      setPhotos(loadedPhotos);
+      setBannerPhoto(data.bannerPhoto || loadedPhotos[0] || null);
+      setProfilePhoto(data.profilePhoto || null);
+      setSpecialties(data.specialties || []);
+      setBoothPolicies(data.boothPolicies || []);
+      setShowReviews(data.showReviews ?? true);
+      setWebsite(data.website || "");
+      setInstagram(data.instagram || "");
+    }
+
+    // Show cached data immediately — skip the loading spinner on repeat visits
+    const cached = getCached<VenueProfile>(cacheKey);
+    if (cached) {
+      applyData(cached);
+      setLoading(false);
+    }
+
+    // Always fetch fresh data in the background
     fetchWithRetry(`/api/venue-profile?venueId=${venueId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+      .then((data: VenueProfile | null) => {
         if (data) {
-          setDisplayName(data.displayName || venueName);
-          setBio(data.bio || "");
-          setLocation(data.location || "");
-          setLatitude(data.latitude);
-          setLongitude(data.longitude);
-          const loadedPhotos = data.photos || [];
-          setPhotos(loadedPhotos);
-          setBannerPhoto(data.bannerPhoto || loadedPhotos[0] || null);
-          setProfilePhoto(data.profilePhoto || null);
-          setSpecialties(data.specialties || []);
-          setBoothPolicies(data.boothPolicies || []);
-          setShowReviews(data.showReviews ?? true);
-          setWebsite(data.website || "");
-          setInstagram(data.instagram || "");
+          applyData(data);
+          setCached(cacheKey, data);
         }
       })
       .catch(() => {})
