@@ -19,6 +19,7 @@ import {
   Conversation,
   BookingType,
 } from "@/lib/types";
+import { fetchWithRetry } from "@/lib/fetchRetry";
 
 const PROFILE_STORAGE_KEY = "sharedsalon_profile";
 const LISTINGS_STORAGE_KEY = "sharedsalon_listings";
@@ -143,8 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function load() {
       try {
         const [listRes, bookRes] = await Promise.all([
-          fetch("/api/listings"),
-          fetch("/api/bookings"),
+          fetchWithRetry("/api/listings"),
+          fetchWithRetry("/api/bookings"),
         ]);
         if (cancelled) return;
         if (listRes.ok && bookRes.ok) {
@@ -430,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshConversations = useCallback(async () => {
     try {
-      const res = await fetch("/api/conversations");
+      const res = await fetchWithRetry("/api/conversations");
       if (res.ok) {
         const data = await res.json();
         setConversations(Array.isArray(data) ? data : []);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { TrustProfile, TrustTier } from "@/lib/types";
 import TrustBadge from "@/components/TrustBadge";
+import { fetchWithRetry } from "@/lib/fetchRetry";
 
 // ── Tier gradient mapping ──────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export default function TrustProfileCard({
     }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/trust?accountId=${encodeURIComponent(accountId)}&role=${role}`)
+    fetchWithRetry(`/api/trust?accountId=${encodeURIComponent(accountId)}&role=${role}`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setProfile(data as TrustProfile);
