@@ -19,13 +19,27 @@ global.mongoose = cached;
 
 export async function connectDB(): Promise<typeof mongoose | null> {
   if (!MONGODB_URI) return null;
-  if (cached.conn) return cached.conn;
+
+  // Return cached connection only if it's still live.
+  if (cached.conn && mongoose.connection.readyState === 1) return cached.conn;
+
+  // If the underlying connection dropped, reset so we reconnect cleanly.
+  if (cached.conn && mongoose.connection.readyState !== 1) {
+    cached.conn = null;
+    cached.promise = null;
+  }
+
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI).catch((err) => {
-      // Reset so the next request retries instead of re-awaiting a dead promise.
-      cached.promise = null;
-      throw err;
-    });
+    cached.promise = mongoose
+      .connect(MONGODB_URI, {
+        serverSelectionTimeoutMS: 10_000,
+        socketTimeoutMS: 45_000,
+      })
+      .catch((err) => {
+        // Reset so the next request retries instead of re-awaiting a dead promise.
+        cached.promise = null;
+        throw err;
+      });
   }
   cached.conn = await cached.promise;
   return cached.conn;
