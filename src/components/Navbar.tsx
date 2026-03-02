@@ -93,10 +93,10 @@ export default function Navbar() {
                     My Requests
                   </Link>
                   <Link
-                    href="/bookings"
+                    href="/freelancer-profile"
                     className="text-sm font-medium text-muted transition-colors hover:text-foreground"
                   >
-                    Booking History
+                    Profile
                   </Link>
                 </>
               )}

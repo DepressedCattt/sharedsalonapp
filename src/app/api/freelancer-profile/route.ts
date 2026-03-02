@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/db";
-import { VenueProfileModel } from "@/models/VenueProfile";
-import type { VenueProfile } from "@/lib/types";
+import { FreelancerProfileModel } from "@/models/FreelancerProfile";
+import type { FreelancerProfile } from "@/lib/types";
 
-function toVenueProfile(doc: {
+function toFreelancerProfile(doc: {
   _id: { toString(): string };
   toObject?(): Record<string, unknown>;
   [k: string]: unknown;
-}): VenueProfile {
+}): FreelancerProfile {
   const o = doc.toObject ? doc.toObject() : (doc as Record<string, unknown>);
   const toDateStr = (v: unknown) => {
     if (!v) return undefined;
@@ -18,17 +18,13 @@ function toVenueProfile(doc: {
   };
   return {
     id: doc._id.toString(),
-    venueId: o.venueId as string,
+    renterId: o.renterId as string,
     displayName: (o.displayName as string) ?? "",
     bio: (o.bio as string) ?? "",
-    location: (o.location as string) ?? "",
-    latitude: o.latitude as number | undefined,
-    longitude: o.longitude as number | undefined,
     photos: (o.photos as string[]) ?? [],
-    bannerPhoto: (o.bannerPhoto as string | null) ?? null,
     profilePhoto: (o.profilePhoto as string | null) ?? null,
+    bannerPhoto: (o.bannerPhoto as string | null) ?? null,
     specialties: (o.specialties as string[]) ?? [],
-    boothPolicies: (o.boothPolicies as string[]) ?? [],
     showReviews: (o.showReviews as boolean) ?? true,
     website: (o.website as string) ?? "",
     instagram: (o.instagram as string) ?? "",
@@ -39,75 +35,63 @@ function toVenueProfile(doc: {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const venueId = searchParams.get("venueId");
-  if (!venueId) {
-    return NextResponse.json({ error: "venueId is required" }, { status: 400 });
+  const renterId = searchParams.get("renterId");
+  if (!renterId) {
+    return NextResponse.json({ error: "renterId is required" }, { status: 400 });
   }
 
   try {
     const db = await connectDB();
     if (!db) {
-      return NextResponse.json(
-        { error: "Database not configured" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
 
-    const doc = await VenueProfileModel.findOne({ venueId });
+    const doc = await FreelancerProfileModel.findOne({ renterId });
     if (!doc) {
-      return NextResponse.json({ error: "Venue profile not found" }, { status: 404 });
+      return NextResponse.json({ error: "Freelancer profile not found" }, { status: 404 });
     }
-    return NextResponse.json(toVenueProfile(doc));
+    return NextResponse.json(toFreelancerProfile(doc));
   } catch (e) {
-    console.error("VenueProfile GET:", e);
-    return NextResponse.json({ error: "Failed to fetch venue profile" }, { status: 500 });
+    console.error("FreelancerProfile GET:", e);
+    return NextResponse.json({ error: "Failed to fetch freelancer profile" }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request) {
   const session = await auth();
-  if (!session?.user?.id || session.user.role !== "venue") {
+  if (!session?.user?.id || session.user.role !== "renter") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const db = await connectDB();
   if (!db) {
-    return NextResponse.json(
-      { error: "Database not configured" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
   try {
-    const venueId = `${session.user.id}_venue`;
-    const body = await request.json() as Partial<VenueProfile>;
+    const renterId = `${session.user.id}_renter`;
+    const body = await request.json() as Partial<FreelancerProfile>;
 
     const update: Record<string, unknown> = {};
     if (typeof body.displayName === "string") update.displayName = body.displayName;
     if (typeof body.bio === "string") update.bio = body.bio;
-    if (typeof body.location === "string") update.location = body.location;
-    if (typeof body.latitude === "number") update.latitude = body.latitude;
-    if (typeof body.longitude === "number") update.longitude = body.longitude;
-    if (typeof body.latitude === "undefined" && "latitude" in body) update.latitude = undefined;
-    if (typeof body.longitude === "undefined" && "longitude" in body) update.longitude = undefined;
     if (Array.isArray(body.photos)) update.photos = body.photos;
-    if ("bannerPhoto" in body) update.bannerPhoto = body.bannerPhoto ?? null;
     if ("profilePhoto" in body) update.profilePhoto = body.profilePhoto ?? null;
+    if ("bannerPhoto" in body) update.bannerPhoto = body.bannerPhoto ?? null;
     if (Array.isArray(body.specialties)) update.specialties = body.specialties;
-    if (Array.isArray(body.boothPolicies)) update.boothPolicies = body.boothPolicies;
     if (typeof body.showReviews === "boolean") update.showReviews = body.showReviews;
     if (typeof body.website === "string") update.website = body.website;
     if (typeof body.instagram === "string") update.instagram = body.instagram;
 
-    const doc = await VenueProfileModel.findOneAndUpdate(
-      { venueId },
+    const doc = await FreelancerProfileModel.findOneAndUpdate(
+      { renterId },
       { $set: update },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
-    return NextResponse.json(toVenueProfile(doc));
+    return NextResponse.json(toFreelancerProfile(doc));
   } catch (e) {
-    console.error("VenueProfile PATCH:", e);
-    return NextResponse.json({ error: "Failed to save venue profile" }, { status: 500 });
+    console.error("FreelancerProfile PATCH:", e);
+    return NextResponse.json({ error: "Failed to save freelancer profile" }, { status: 500 });
   }
 }

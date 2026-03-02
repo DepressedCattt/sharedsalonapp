@@ -21,14 +21,14 @@ const VENUES = [
   {
     id: "seed_v1_venue",
     name: "The Style Collective",
-    bio: "An award-winning creative space in the heart of Mayfair. The Style Collective brings together the city's most talented independent stylists under one beautifully designed roof. With 8 premium styling stations, a dedicated colour bar, and on-site laundry, everything you need to deliver a world-class client experience is waiting for you.",
-    location: "Berkeley Square, Mayfair, London W1J 6BS, UK",
-    lat: 51.5099, lng: -0.1478,
+    bio: "An award-winning creative space in the heart of Paddington, Sydney. The Style Collective brings together the city's most talented independent stylists under one beautifully designed roof. With 8 premium styling stations, a dedicated colour bar, and on-site laundry, everything you need to deliver a world-class client experience is waiting for you.",
+    location: "Oxford St, Paddington NSW 2021, Australia",
+    lat: -33.8843, lng: 151.2263,
     specialties: ["Hair Colouring", "Balayage", "Wedding Styling", "Keratin Treatments", "Cuts & Blowdries"],
     boothPolicies: [
       "Maintain a clean, product-free workstation at the close of every day",
       "No strong fragrances in shared colour areas",
-      "Advance booking only — no walk-ins accepted during peak season (Jun–Aug)",
+      "Advance booking only — no walk-ins accepted during peak season (Nov–Jan)",
     ],
     photos: [
       img("1560066984-138daefb34b"),
@@ -37,7 +37,7 @@ const VENUES = [
       img("1516975080664-ed2fc6a32937"),
     ],
     instagram: "@thestylecollective",
-    website: "https://thestylecollective.co.uk",
+    website: "https://thestylecollective.com.au",
   },
   {
     id: "seed_v2_venue",
@@ -63,9 +63,9 @@ const VENUES = [
   {
     id: "seed_v3_venue",
     name: "The Barber Quarter",
-    bio: "East London's most sought-after barbershop collective on iconic Redchurch Street. Heritage mirrors, vintage barber chairs, and a craft beer fridge — The Barber Quarter is where old-school craft meets modern business. We have 6 stations available for freelance barbers who want the space, the vibe, and the walk-in traffic.",
-    location: "Redchurch St, Shoreditch, London E2 7DJ, UK",
-    lat: 51.5226, lng: -0.0718,
+    bio: "Fitzroy's most sought-after barbershop collective on iconic Smith Street. Heritage mirrors, vintage barber chairs, and a craft beer fridge — The Barber Quarter is where old-school craft meets modern business. We have 6 stations available for freelance barbers who want the space, the vibe, and the walk-in traffic.",
+    location: "Smith St, Fitzroy VIC 3065, Australia",
+    lat: -37.7985, lng: 144.9778,
     specialties: ["Classic Cuts", "Fades & Tapers", "Beard Grooming", "Hot Towel Shaves", "Men's Colouring"],
     boothPolicies: [
       "Maintain the classic barber aesthetic — no neon signs or digital displays",
@@ -79,7 +79,7 @@ const VENUES = [
       img("1560066984-138daefb34b"),
     ],
     instagram: "@thebarberquarter",
-    website: "https://thebarberquarter.co.uk",
+    website: "https://thebarberquarter.com.au",
   },
   {
     id: "seed_v4_venue",
@@ -156,14 +156,14 @@ const LISTINGS_DATA = [
   {
     venueId: "seed_v1_venue",
     venueName: "The Style Collective",
-    title: "Premium Styling Chair — Mayfair",
+    title: "Premium Styling Chair — Paddington",
     description:
-      "Take your craft to a new postcode. This fully-equipped premium styling station is nestled inside one of London's most acclaimed shared salon spaces. You'll benefit from a constant stream of walk-in clients, high-speed Wi-Fi, complimentary product samples from our brand partners, and a professional backwash bay. The chair is available Monday–Saturday; ideal for freelance stylists looking for a flagship London base without the overheads.",
+      "Take your craft to a new suburb. This fully-equipped premium styling station is nestled inside one of Sydney's most acclaimed shared salon spaces. You'll benefit from a constant stream of walk-in clients, high-speed Wi-Fi, complimentary product samples from our brand partners, and a professional backwash bay. The chair is available Monday–Saturday; ideal for freelance stylists looking for a flagship Sydney base without the overheads.",
     priceType: "daily",
     price: 95,
-    location: "Berkeley Square, Mayfair, London W1J 6BS, UK",
-    latitude: 51.5099,
-    longitude: -0.1478,
+    location: "Oxford St, Paddington NSW 2021, Australia",
+    latitude: -33.8843,
+    longitude: 151.2263,
     listingMode: "one_off",
     slotCapacity: 1,
     availability: fullWeekSlots(9, 18),
@@ -235,14 +235,14 @@ const LISTINGS_DATA = [
   {
     venueId: "seed_v3_venue",
     venueName: "The Barber Quarter",
-    title: "Classic Barber Station — Shoreditch (Recurring)",
+    title: "Classic Barber Station — Fitzroy (Recurring)",
     description:
-      "Secure your very own recurring slot in one of Shoreditch's busiest barbershops. The Barber Quarter sees over 400 walk-ins every week, and our recurring station deal puts you front-of-house for your chosen day and time every single week. You'll have your own lockable drawer, access to our sterilisation cabinet, hot towel station, and a loyal audience of East London's creative class.",
+      "Secure your very own recurring slot in one of Fitzroy's busiest barbershops. The Barber Quarter sees over 400 walk-ins every week, and our recurring station deal puts you front-of-house for your chosen day and time every single week. You'll have your own lockable drawer, access to our sterilisation cabinet, hot towel station, and a loyal audience of Melbourne's creative class.",
     priceType: "daily",
     price: 80,
-    location: "Redchurch St, Shoreditch, London E2 7DJ, UK",
-    latitude: 51.5226,
-    longitude: -0.0718,
+    location: "Smith St, Fitzroy VIC 3065, Australia",
+    latitude: -37.7985,
+    longitude: 144.9778,
     listingMode: "recurring",
     slotCapacity: 2,
     availability: weekdaySlots(8, 18),
@@ -354,49 +354,9 @@ const RENTERS = [
   { id: "seed_r5_renter", name: "Ryan Mitchell", avatar: "https://i.pravatar.cc/150?img=56" },
 ];
 
-/* ─── Trust profiles for venues ──────────────────────────── */
-const TRUST_PROFILES = [
-  {
-    accountId: "seed_v1_venue",
-    role: "venue",
-    tier: "gold",
-    foundingVerified: true,
-    trustScore: 88,
-    venueMetrics: { fairnessScore: 90, satisfactionScore: 88, retentionRate: 84, paymentScore: 96, activeFreelancers: 7, totalCompleted: 127, disputeCount: 1 },
-  },
-  {
-    accountId: "seed_v2_venue",
-    role: "venue",
-    tier: "platinum",
-    foundingVerified: true,
-    trustScore: 94,
-    venueMetrics: { fairnessScore: 95, satisfactionScore: 94, retentionRate: 91, paymentScore: 98, activeFreelancers: 5, totalCompleted: 203, disputeCount: 0 },
-  },
-  {
-    accountId: "seed_v3_venue",
-    role: "venue",
-    tier: "silver",
-    foundingVerified: false,
-    trustScore: 76,
-    venueMetrics: { fairnessScore: 78, satisfactionScore: 76, retentionRate: 70, paymentScore: 88, activeFreelancers: 4, totalCompleted: 89, disputeCount: 3 },
-  },
-  {
-    accountId: "seed_v4_venue",
-    role: "venue",
-    tier: "gold",
-    foundingVerified: true,
-    trustScore: 82,
-    venueMetrics: { fairnessScore: 83, satisfactionScore: 82, retentionRate: 79, paymentScore: 91, activeFreelancers: 6, totalCompleted: 114, disputeCount: 2 },
-  },
-  {
-    accountId: "seed_v5_venue",
-    role: "venue",
-    tier: "platinum",
-    foundingVerified: true,
-    trustScore: 96,
-    venueMetrics: { fairnessScore: 97, satisfactionScore: 96, retentionRate: 94, paymentScore: 99, activeFreelancers: 9, totalCompleted: 341, disputeCount: 0 },
-  },
-];
+// Trust profiles are no longer seeded with mock data.
+// They are computed exclusively by the trust engine from real bookings and reviews.
+// Use /admin/trust to inject test reviews and trigger profile computation.
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 function daysFromNow(n: number): string {
@@ -523,18 +483,7 @@ export async function POST(request: Request) {
     )
   );
 
-  /* ── 3. Trust profiles ─────────────────────────────────── */
-  await Promise.all(
-    TRUST_PROFILES.map((tp) =>
-      TrustProfileModel.findOneAndUpdate(
-        { accountId: tp.accountId },
-        { ...tp, lastCalculatedAt: new Date() },
-        { upsert: true, new: true }
-      )
-    )
-  );
-
-  /* ── 4. Booking requests ───────────────────────────────── */
+  /* ── 3. Booking requests ───────────────────────────────── */
   const listing1Id = listingDocs[0]._id.toString();
   const listing2Id = listingDocs[1]._id.toString();
   const listing3Id = listingDocs[2]._id.toString();
@@ -692,8 +641,8 @@ export async function POST(request: Request) {
       listingTitle: LISTINGS_DATA[0].title,
       lastMessage: { content: "Looking forward to having you in the venue next week!", senderId: "seed_v1_venue", senderName: "The Style Collective", createdAt: new Date(Date.now() - 60_000) },
       messages: [
-        { senderId: RENTERS[0].id, senderName: RENTERS[0].name, senderAvatarUrl: RENTERS[0].avatar, content: "Hi! I'm really interested in the Mayfair styling chair. I've just moved to London and I'm looking for a solid base a few days a week.", createdAt: new Date(Date.now() - 3_600_000) },
-        { senderId: "seed_v1_venue", senderName: "The Style Collective", content: "Hi Jessica! Welcome to London 🎉 We'd love to have you. When are you looking to start?", createdAt: new Date(Date.now() - 3_300_000) },
+        { senderId: RENTERS[0].id, senderName: RENTERS[0].name, senderAvatarUrl: RENTERS[0].avatar, content: "Hi! I'm really interested in the Paddington styling chair. I've just moved to Sydney and I'm looking for a solid base a few days a week.", createdAt: new Date(Date.now() - 3_600_000) },
+        { senderId: "seed_v1_venue", senderName: "The Style Collective", content: "Hi Jessica! Welcome to Sydney 🎉 We'd love to have you. When are you looking to start?", createdAt: new Date(Date.now() - 3_300_000) },
         { senderId: RENTERS[0].id, senderName: RENTERS[0].name, senderAvatarUrl: RENTERS[0].avatar, content: "I was thinking from the 3rd of next month — Monday to Thursday ideally.", createdAt: new Date(Date.now() - 3_000_000) },
         { senderId: "seed_v1_venue", senderName: "The Style Collective", content: "Perfect — that week is wide open. Go ahead and submit a booking request and I'll approve it straight away.", createdAt: new Date(Date.now() - 2_700_000) },
         { senderId: RENTERS[0].id, senderName: RENTERS[0].name, senderAvatarUrl: RENTERS[0].avatar, content: "Done! Just submitted. Is there parking near the venue?", createdAt: new Date(Date.now() - 600_000) },
@@ -725,7 +674,7 @@ export async function POST(request: Request) {
       listingTitle: LISTINGS_DATA[2].title,
       lastMessage: { content: "Thanks — see you Monday morning!", senderId: RENTERS[3].id, senderName: RENTERS[3].name, createdAt: new Date(Date.now() - 180_000) },
       messages: [
-        { senderId: RENTERS[3].id, senderName: RENTERS[3].name, senderAvatarUrl: RENTERS[3].avatar, content: "Hey! I came across your recurring barber station listing. I've been looking for something like this in East London for ages.", createdAt: new Date(Date.now() - 604_800_000) },
+        { senderId: RENTERS[3].id, senderName: RENTERS[3].name, senderAvatarUrl: RENTERS[3].avatar, content: "Hey! I came across your recurring barber station listing. I've been looking for something like this in Fitzroy for ages.", createdAt: new Date(Date.now() - 604_800_000) },
         { senderId: "seed_v3_venue", senderName: "The Barber Quarter", content: "You've found the right place! We have Monday and Wednesday slots available right now. What days work for you?", createdAt: new Date(Date.now() - 601_200_000) },
         { senderId: RENTERS[3].id, senderName: RENTERS[3].name, senderAvatarUrl: RENTERS[3].avatar, content: "Mondays would be ideal. I do about 8–10 clients on a Monday. Is the vintage Koken chair still available?", createdAt: new Date(Date.now() - 597_600_000) },
         { senderId: "seed_v3_venue", senderName: "The Barber Quarter", content: "That's the one, yes! She's been beautifully restored. Monday slot is all yours — I'll set it up as a recurring booking.", createdAt: new Date(Date.now() - 360_000) },
@@ -752,7 +701,7 @@ export async function POST(request: Request) {
         listingTitle: `SEED:${LISTINGS_DATA[0].title}`,
         lastMessage: { content: "Great! Go ahead and submit a booking request whenever you're ready.", senderId: "seed_v1_venue", senderName: "The Style Collective", createdAt: new Date(Date.now() - 300_000) },
         messages: [
-          { senderId: currentUser.accountId, senderName: currentUser.name, senderAvatarUrl: currentUser.avatarUrl, content: "Hi, I'm interested in the Mayfair styling chair. Do you have availability next month?", createdAt: new Date(Date.now() - 3_600_000) },
+          { senderId: currentUser.accountId, senderName: currentUser.name, senderAvatarUrl: currentUser.avatarUrl, content: "Hi, I'm interested in the Paddington styling chair. Do you have availability next month?", createdAt: new Date(Date.now() - 3_600_000) },
           { senderId: "seed_v1_venue", senderName: "The Style Collective", content: "Hi there! We have plenty of availability next month — what days are you looking at?", createdAt: new Date(Date.now() - 3_300_000) },
           { senderId: currentUser.accountId, senderName: currentUser.name, senderAvatarUrl: currentUser.avatarUrl, content: "Ideally Monday through Thursday — is there a discount for booking a full week?", createdAt: new Date(Date.now() - 3_000_000) },
           { senderId: "seed_v1_venue", senderName: "The Style Collective", content: "Great! Go ahead and submit a booking request whenever you're ready.", createdAt: new Date(Date.now() - 300_000) },
@@ -815,7 +764,7 @@ export async function POST(request: Request) {
     created: {
       venueProfiles: venueProfileDocs.length,
       listings: listingDocs.length,
-      trustProfiles: TRUST_PROFILES.length,
+      trustProfiles: 0,
       bookings: BOOKINGS.length + userBookings.length,
       reviews: REVIEWS.length,
       conversations: mockConvs.length,

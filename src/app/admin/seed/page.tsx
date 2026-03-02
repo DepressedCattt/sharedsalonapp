@@ -88,7 +88,7 @@ export default function SeedPage() {
         {/* Cards */}
         <div className="space-y-3 mb-6">
           {[
-            { icon: "🏢", label: "5 Venue Profiles", sub: "Mayfair · Bondi · Shoreditch · Surry Hills · Melbourne CBD" },
+            { icon: "🏢", label: "5 Venue Profiles", sub: "Paddington · Bondi · Fitzroy · Surry Hills · Melbourne CBD" },
             { icon: "📋", label: "5 Listings", sub: "Styling chairs, bridal suites, barber stations & private suites" },
             { icon: "⭐", label: "5 Trust Profiles", sub: "Bronze → Platinum tiers with realistic metrics" },
             { icon: "📅", label: "7 Booking Requests", sub: "Mix of pending, approved, completed & declined" },

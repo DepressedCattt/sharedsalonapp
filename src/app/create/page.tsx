@@ -387,7 +387,7 @@ export default function CreateListingPage() {
                 Title <span className="text-danger">*</span>
               </label>
               <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Premium Styling Chair — Central London" required
+                placeholder="e.g. Premium Styling Chair — Sydney CBD" required
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
 
@@ -440,7 +440,7 @@ export default function CreateListingPage() {
                   if (coords) { setLatitude(coords.latitude); setLongitude(coords.longitude); }
                   else { setLatitude(undefined); setLongitude(undefined); }
                 }}
-                placeholder="Start typing a full address (e.g. 123 High St, London)" required
+                placeholder="Start typing a full address (e.g. 123 High St, Sydney NSW)" required
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 hint="Select an address from the suggestions so we can show this listing on the map." />
               {staticMapUrl && (

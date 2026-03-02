@@ -353,7 +353,7 @@ export default function EditListingPage() {
             <div>
               <label className="mb-1 block text-sm font-semibold text-foreground">Title <span className="text-danger">*</span></label>
               <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Premium Styling Chair — Central London" required
+                placeholder="e.g. Premium Styling Chair — Sydney CBD" required
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
 
