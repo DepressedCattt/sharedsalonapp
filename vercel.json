@@ -4,11 +4,5 @@
       "maxDuration": 30
     }
   },
-  "regions": ["syd1"],
-  "crons": [
-    {
-      "path": "/api/health",
-      "schedule": "*/10 * * * *"
-    }
-  ]
+  "regions": ["syd1"]
 }
