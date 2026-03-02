@@ -8,6 +8,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useAuth } from "@/context/AuthContext";
 import { VenueOnboardingTour, OnboardingHighlight } from "@/components/VenueOnboardingTour";
 import TrustProfileCard from "@/components/TrustProfileCard";
+import { fetchWithRetry } from "@/lib/fetchRetry";
 
 const SPECIALTY_OPTIONS = [
   { label: "Hair", icon: "M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.522 4.82 3.889 6.21L6 21l4.353-1.813A10.065 10.065 0 0012 19.23c4.97 0 9-3.186 9-7.115C21 8.185 16.97 5 12 5V3z" },
@@ -226,7 +227,7 @@ function VenueProfileContent({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/venue-profile?venueId=${venueId}`)
+    fetchWithRetry(`/api/venue-profile?venueId=${venueId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) {
