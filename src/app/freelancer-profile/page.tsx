@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import TrustProfileCard from "@/components/TrustProfileCard";
 import type { FreelancerProfile } from "@/lib/types";
 import { fetchWithRetry } from "@/lib/fetchRetry";
+import { getCached, setCached } from "@/lib/apiCache";
 
 const SPECIALTY_OPTIONS = [
   { label: "Hair", icon: "M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.522 4.82 3.889 6.21L6 21l4.353-1.813A10.065 10.065 0 0012 19.23c4.97 0 9-3.186 9-7.115C21 8.185 16.97 5 12 5V3z" },
@@ -185,20 +186,35 @@ function FreelancerProfileContent({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const cacheKey = `freelancer_profile_${renterId}`;
+
+    function applyData(data: FreelancerProfile) {
+      setDisplayName(data.displayName || renterName);
+      setBio(data.bio || "");
+      const loadedPhotos = data.photos || [];
+      setPhotos(loadedPhotos);
+      setProfilePhoto(data.profilePhoto || null);
+      setBannerPhoto(data.bannerPhoto || loadedPhotos[0] || null);
+      setSpecialties(data.specialties || []);
+      setShowReviews(data.showReviews ?? true);
+      setWebsite(data.website || "");
+      setInstagram(data.instagram || "");
+    }
+
+    // Show cached data immediately — skip the loading spinner on repeat visits
+    const cached = getCached<FreelancerProfile>(cacheKey);
+    if (cached) {
+      applyData(cached);
+      setLoading(false);
+    }
+
+    // Always fetch fresh data in the background
     fetchWithRetry(`/api/freelancer-profile?renterId=${renterId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: FreelancerProfile | null) => {
         if (data) {
-          setDisplayName(data.displayName || renterName);
-          setBio(data.bio || "");
-          const loadedPhotos = data.photos || [];
-          setPhotos(loadedPhotos);
-          setProfilePhoto(data.profilePhoto || null);
-          setBannerPhoto(data.bannerPhoto || loadedPhotos[0] || null);
-          setSpecialties(data.specialties || []);
-          setShowReviews(data.showReviews ?? true);
-          setWebsite(data.website || "");
-          setInstagram(data.instagram || "");
+          applyData(data);
+          setCached(cacheKey, data);
         }
       })
       .catch(() => {})

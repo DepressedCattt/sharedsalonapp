@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { TrustProfile, TrustTier } from "@/lib/types";
 import TrustBadge from "@/components/TrustBadge";
 import { fetchWithRetry } from "@/lib/fetchRetry";
+import { getCached, setCached } from "@/lib/apiCache";
 
 // ── Tier gradient mapping ──────────────────────────────────────────────────────
 
@@ -86,14 +87,28 @@ export default function TrustProfileCard({
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    const cacheKey = `trust_${accountId}_${role}`;
+
+    // Show cached data immediately — no spinner on repeat visits
+    const cached = getCached<TrustProfile>(cacheKey);
+    if (cached) {
+      setProfile(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    // Always fetch fresh data in the background
     fetchWithRetry(`/api/trust?accountId=${encodeURIComponent(accountId)}&role=${role}`)
       .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setProfile(data as TrustProfile);
+      .then((data: TrustProfile) => {
+        if (!cancelled) {
+          setProfile(data);
+          setCached(cacheKey, data);
+        }
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load trust profile.");
+        if (!cancelled && !cached) setError("Could not load trust profile.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
