@@ -34,7 +34,7 @@ export function GoogleMapsProvider({ children }: { children: ReactNode }) {
     <GoogleMapsContext.Provider value={{ isLoaded, apiKey }}>
       {apiKey && (
         <Script
-          src={`${GOOGLE_SCRIPT_URL}?key=${apiKey}&libraries=places&region=au&language=en-AU`}
+          src={`${GOOGLE_SCRIPT_URL}?key=${apiKey}&libraries=places&region=au&language=en-AU&loading=async`}
           onLoad={handleLoad}
           strategy="lazyOnload"
         />
