@@ -88,6 +88,8 @@ export interface Listing {
 
 export type BookingStatus = "pending" | "approved" | "declined" | "completed";
 
+export type PaymentStatus = "unpaid" | "pending_payment" | "paid" | "refunded";
+
 /** Whether the freelancer applied for a specific date range or a recurring weekly slot. */
 export type BookingType = "date_range" | "recurring_slot";
 
@@ -121,6 +123,12 @@ export interface BookingRequest {
   bookingType: BookingType;
   /** For recurring_slot bookings: the specific weekly slot the freelancer applied for. */
   recurringSlot?: AvailabilitySlot;
+  /** Stripe payment lifecycle status. */
+  paymentStatus?: PaymentStatus;
+  /** Stripe Checkout Session ID associated with this booking. */
+  stripeCheckoutSessionId?: string;
+  /** Total charged amount in AUD cents (price × duration). */
+  totalAmount?: number;
   createdAt: string;
 }
 
@@ -187,6 +195,10 @@ export interface VenueProfile {
   showReviews: boolean;
   website?: string;
   instagram?: string;
+  /** Stripe Express connected account ID (acct_...). Set after onboarding initiated. */
+  stripeConnectAccountId?: string | null;
+  /** True once the venue has completed Stripe Express onboarding. */
+  stripeConnectOnboarded?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -280,6 +292,16 @@ export interface TrustProfile {
   renterMetrics?: RenterTrustMetrics;
   venueMetrics?: VenueTrustMetrics;
   lastCalculatedAt?: string;
+  /** ABN (Australian Business Number) verification */
+  abnVerified?: boolean;
+  abnNumber?: string;
+  abnVerifiedAt?: string;
+  /** "auth_name" = matched against OAuth identity (stronger); "display_name" = matched against business display name */
+  abnMatchType?: "auth_name" | "display_name";
+  /** Government ID verification via Stripe Identity */
+  idVerified?: boolean;
+  idVerifiedAt?: string;
+  stripeVerificationSessionId?: string;
   createdAt?: string;
   updatedAt?: string;
 }

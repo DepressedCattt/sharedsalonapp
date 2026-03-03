@@ -601,7 +601,7 @@ function VenueDashboard() {
               {/* RIGHT: Trust Profile sticky sidebar */}
               {user?.accountId && (
                 <div className="lg:w-[300px] lg:shrink-0 lg:sticky lg:top-6">
-                  <TrustProfileCard accountId={user.accountId} role="venue" />
+                  <TrustProfileCard accountId={user.accountId} role="venue" isOwner />
                 </div>
               )}
 
@@ -838,7 +838,7 @@ function RenterDashboard() {
               </div>
 
               {user?.accountId && (
-                <TrustProfileCard accountId={user.accountId} role="renter" />
+                <TrustProfileCard accountId={user.accountId} role="renter" isOwner />
               )}
             </div>
 

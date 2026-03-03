@@ -189,14 +189,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [session, status]);
 
-  // Load profile from localStorage by account (venue and freelancer have separate profiles)
+  // Load profile: try API (MongoDB) first so display name is always current,
+  // fall back to localStorage if the DB isn't available.
   useEffect(() => {
     if (!user?.accountId) {
       setProfileState(null);
       return;
     }
-    setProfileState(loadProfile(user.accountId) ?? null);
-  }, [user?.accountId]);
+    let cancelled = false;
+    fetch("/api/profile")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { displayName?: string; email?: string; phone?: string; location?: string } | null) => {
+        if (cancelled) return;
+        if (data) {
+          const merged: UserProfile = {
+            displayName: data.displayName || user.name,
+            email: data.email || user.email,
+            phone: data.phone ?? "",
+            location: data.location ?? "",
+            paymentAccount: loadProfile(user.accountId)?.paymentAccount ?? { connected: false },
+          };
+          setProfileState(merged);
+          saveProfile(user.accountId, merged);
+        } else {
+          setProfileState(loadProfile(user.accountId) ?? null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProfileState(loadProfile(user.accountId) ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [user?.accountId, user?.name, user?.email]);
 
   const isLoading = status === "loading";
 
@@ -222,6 +245,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
         };
         saveProfile(user.accountId, next);
+        // Persist to DB so server-side code (e.g. ABN verification) sees
+        // the latest display name rather than stale or empty data.
+        fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            displayName: next.displayName,
+            email: next.email,
+            phone: next.phone,
+            location: next.location,
+          }),
+        }).catch(() => { /* localStorage copy is the fallback */ });
         return next;
       });
     },

@@ -16,6 +16,8 @@ const venueProfileSchema = new Schema(
     showReviews: { type: Boolean, default: true },
     website: { type: String, default: "" },
     instagram: { type: String, default: "" },
+    stripeConnectAccountId: { type: String, default: null },
+    stripeConnectOnboarded: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
