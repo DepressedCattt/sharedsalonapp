@@ -43,6 +43,7 @@ export default function SettingsPage() {
   const [abnResult, setAbnResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [idSubmitting, setIdSubmitting] = useState(false);
   const [idMessage, setIdMessage] = useState("");
+  const [idPending, setIdPending] = useState(false);
   const abnInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -95,22 +96,65 @@ export default function SettingsPage() {
     }
   }, [searchParams]);
 
-  // Refresh ID verification status after returning from Stripe Identity
+  // Poll Stripe verification status after returning from Stripe Identity.
+  // Webhooks may not arrive before the redirect (especially in local dev), so
+  // we query Stripe directly via the status endpoint and update the DB there.
   useEffect(() => {
     const identityParam = searchParams.get("identity");
-    if (identityParam === "complete" && user?.accountId && user?.role) {
-      setVerifyLoading(true);
-      fetch(`/api/trust?accountId=${encodeURIComponent(user.accountId)}&role=${user.role}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data) {
-            setIdVerified(!!data.idVerified);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setVerifyLoading(false));
+    if (identityParam !== "complete") return;
+
+    let cancelled = false;
+    const MAX_ATTEMPTS = 15;   // 15 × 2s = 30 seconds max
+    const INTERVAL_MS = 2000;
+
+    async function pollStatus(attempt: number) {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/verify/identity/status");
+        const data = (res.ok ? await res.json() : null) as {
+          idVerified?: boolean;
+          status?: string;
+        } | null;
+
+        if (data?.idVerified) {
+          setIdVerified(true);
+          setIdPending(false);
+          setIdMessage("Your ID has been verified.");
+          setVerifyLoading(false);
+          return;
+        }
+
+        if (data?.status === "requires_input" || data?.status === "canceled") {
+          setIdPending(false);
+          setIdMessage("Verification was unsuccessful. Please try again.");
+          setVerifyLoading(false);
+          return;
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => pollStatus(attempt + 1), INTERVAL_MS);
+        } else {
+          setIdPending(false);
+          setIdMessage("Verification is taking a moment — check back shortly.");
+          setVerifyLoading(false);
+        }
+      } catch {
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => pollStatus(attempt + 1), INTERVAL_MS);
+        } else {
+          setIdPending(false);
+          setVerifyLoading(false);
+        }
+      }
     }
-  }, [searchParams, user?.accountId, user?.role]);
+
+    setIdPending(true);
+    setVerifyLoading(true);
+    setIdMessage("");
+    pollStatus(0);
+
+    return () => { cancelled = true; };
+  }, [searchParams]);
 
   useEffect(() => {
     if (abnOpen) abnInputRef.current?.focus();
@@ -579,7 +623,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-                {!idVerified && !verifyLoading && (
+                {!idVerified && !verifyLoading && !idPending && (
                   <button
                     type="button"
                     onClick={handleIdVerify}
@@ -589,9 +633,20 @@ export default function SettingsPage() {
                     {idSubmitting ? "Starting…" : "Verify ID"}
                   </button>
                 )}
+                {idPending && (
+                  <span className="flex shrink-0 items-center gap-2 text-sm text-muted">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                    Checking…
+                  </span>
+                )}
               </div>
               {idMessage && (
-                <p className="mt-3 text-sm text-muted leading-relaxed">{idMessage}</p>
+                <p className={`mt-3 text-sm leading-relaxed ${
+                  idVerified ? "text-success" : idMessage.includes("unsuccessful") ? "text-destructive" : "text-muted"
+                }`}>{idMessage}</p>
               )}
             </div>
 
