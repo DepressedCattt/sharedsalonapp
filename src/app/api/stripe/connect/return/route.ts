@@ -1,8 +1,11 @@
 /**
  * GET /api/stripe/connect/return
  *
- * Stripe uses this as the refresh_url when the onboarding link expires.
- * Generates a fresh Account Link and redirects the venue back to Stripe.
+ * Stripe calls this as the refresh_url when an Account Link expires mid-flow.
+ * We generate a fresh V2 Account Link and redirect the venue back to Stripe.
+ *
+ * When ?refresh=true is absent (Stripe returning the user after completion),
+ * we redirect to the frontend return page for status display.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,11 +18,13 @@ export async function GET(req: NextRequest) {
   const isRefresh = req.nextUrl.searchParams.get("refresh") === "true";
 
   if (!isRefresh) {
+    // Normal return from Stripe onboarding — show the frontend status page
     return NextResponse.redirect(
       new URL("/stripe/connect/return", req.nextUrl.origin)
     );
   }
 
+  // PLACEHOLDER: STRIPE_SECRET_KEY must be configured to regenerate a link
   if (!isStripeConfigured()) {
     return NextResponse.redirect(
       new URL("/settings?stripe=unconfigured", req.nextUrl.origin)
@@ -44,6 +49,7 @@ export async function GET(req: NextRequest) {
   try {
     const venue = await VenueProfileModel.findOne({ venueId }).lean() as {
       stripeConnectAccountId?: string | null;
+      stripeConnectIsV2?: boolean;
     } | null;
 
     if (!venue?.stripeConnectAccountId) {
@@ -53,14 +59,34 @@ export async function GET(req: NextRequest) {
     }
 
     const stripe = getStripe();
-    const accountLink = await stripe.accountLinks.create({
-      account: venue.stripeConnectAccountId,
-      refresh_url: `${appUrl}/api/stripe/connect/return?refresh=true`,
-      return_url: `${appUrl}/stripe/connect/return`,
-      type: "account_onboarding",
-    });
 
-    return NextResponse.redirect(accountLink.url);
+    if (venue.stripeConnectIsV2) {
+      // Regenerate a V2 Account Link for the expired session
+      const accountLink = await stripe.v2.core.accountLinks.create({
+        account: venue.stripeConnectAccountId,
+        use_case: {
+          type: "account_onboarding",
+          account_onboarding: {
+            configurations: ["recipient"],
+            refresh_url: `${appUrl}/api/stripe/connect/return?refresh=true`,
+            return_url: `${appUrl}/stripe/connect/return`,
+          },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as never);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return NextResponse.redirect((accountLink as any).url);
+    } else {
+      // Backward compatibility: V1 Express account — use V1 account links
+      const accountLink = await stripe.accountLinks.create({
+        account: venue.stripeConnectAccountId,
+        refresh_url: `${appUrl}/api/stripe/connect/return?refresh=true`,
+        return_url: `${appUrl}/stripe/connect/return`,
+        type: "account_onboarding",
+      });
+      return NextResponse.redirect(accountLink.url);
+    }
   } catch (err) {
     console.error("GET /api/stripe/connect/return error:", err);
     return NextResponse.redirect(

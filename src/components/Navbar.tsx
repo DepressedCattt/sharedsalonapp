@@ -9,8 +9,19 @@ import { UserRole } from "@/lib/types";
 
 export default function Navbar() {
   const router = useRouter();
-  const { user, profile, setRole, unreadTotal } = useAuth();
+  const { user, profile, setRole, unreadTotal, bookingRequests } = useAuth();
   const displayName = profile?.displayName ?? user?.name ?? "User";
+
+  // Count approved bookings that still need payment — shown as a badge on "My Bookings"
+  const paymentDueCount =
+    user?.role === "renter"
+      ? bookingRequests.filter(
+          (b) =>
+            b.renterId === user.accountId &&
+            b.status === "approved" &&
+            b.paymentStatus !== "paid"
+        ).length
+      : 0;
   const [menuOpen, setMenuOpen] = useState(false);
   const [signOutConfirm, setSignOutConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -91,6 +102,18 @@ export default function Navbar() {
                     className="text-sm font-medium text-muted transition-colors hover:text-foreground"
                   >
                     My Requests
+                  </Link>
+                  {/* My Bookings — links to the payment + booking history page */}
+                  <Link
+                    href="/bookings"
+                    className="relative text-sm font-medium text-muted transition-colors hover:text-foreground"
+                  >
+                    My Bookings
+                    {paymentDueCount > 0 && (
+                      <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-bold text-white">
+                        {paymentDueCount}
+                      </span>
+                    )}
                   </Link>
                   <Link
                     href="/freelancer-profile"

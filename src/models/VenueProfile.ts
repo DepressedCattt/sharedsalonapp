@@ -18,6 +18,8 @@ const venueProfileSchema = new Schema(
     instagram: { type: String, default: "" },
     stripeConnectAccountId: { type: String, default: null },
     stripeConnectOnboarded: { type: Boolean, default: false },
+    // true when the account was created with the Stripe V2 API
+    stripeConnectIsV2: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

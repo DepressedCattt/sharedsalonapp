@@ -1,16 +1,20 @@
 /**
  * POST /api/stripe/checkout
  *
- * Creates a Stripe Checkout Session for an approved booking.
- * The charge is a destination charge — money flows through the platform to the
- * venue's Stripe Express connected account.
+ * Creates a Stripe Checkout Session for an approved booking using a destination
+ * charge. Money flows: customer → platform → venue's connected account.
  *
  * Body: { bookingId: string }
- *
  * Returns: { url: string } — the Stripe-hosted Checkout URL.
  *
- * Commission: currently 0%. To add a platform fee later, set:
- *   payment_intent_data.application_fee_amount = <fee in cents>
+ * Destination charge model:
+ *   - The platform processes the full charge from the customer
+ *   - An application_fee_amount is withheld by the platform
+ *   - The remainder is transferred to the venue via transfer_data.destination
+ *
+ * Platform fee rate:
+ *   Set PLATFORM_FEE_PERCENT in .env.local (default: 5 = 5%)
+ *   PLACEHOLDER: set PLATFORM_FEE_PERCENT=0 to collect no fee during testing
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -129,12 +133,23 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const stripe = getStripe();
 
+    // Platform fee: read from env or default to 5%.
+    // PLACEHOLDER: set PLATFORM_FEE_PERCENT=0 in .env.local to collect no fee during testing.
+    const feePct = Math.max(
+      0,
+      Math.min(100, Number(process.env.PLATFORM_FEE_PERCENT ?? 5))
+    );
+    // application_fee_amount is withheld from the destination transfer (in cents).
+    // e.g. 5% of $100 = $5 kept by platform, $95 transferred to venue.
+    const applicationFeeAmount = Math.round(totalCents * (feePct / 100));
+
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
         {
           quantity: 1,
           price_data: {
+            // PLACEHOLDER: change currency to match your market (e.g. 'usd', 'gbp')
             currency: "aud",
             unit_amount: totalCents,
             product_data: {
@@ -145,15 +160,21 @@ export async function POST(req: NextRequest) {
         },
       ],
       payment_intent_data: {
+        // Destination charge: full amount captured by platform, remainder transferred to venue.
         transfer_data: {
           destination: venue.stripeConnectAccountId,
         },
-        // To add platform commission in the future, uncomment:
-        // application_fee_amount: Math.round(totalCents * 0.05), // e.g. 5%
+        // Platform fee withheld before transfer. Set PLATFORM_FEE_PERCENT=0 to disable.
+        ...(applicationFeeAmount > 0 && {
+          application_fee_amount: applicationFeeAmount,
+        }),
         metadata: {
           bookingId: bookingId,
           renterId,
           venueId: booking.venueId,
+          // Store fee details in metadata for reconciliation
+          feePct: feePct.toString(),
+          feeAmountCents: applicationFeeAmount.toString(),
         },
       },
       success_url: `${appUrl}/bookings?payment=success&bookingId=${bookingId}`,
