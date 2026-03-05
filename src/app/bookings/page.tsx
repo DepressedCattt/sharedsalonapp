@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AreaChart,
   Area,
@@ -15,7 +15,7 @@ import {
 import Navbar from "@/components/Navbar";
 import BookingCard from "@/components/BookingCard";
 import { useAuth } from "@/context/AuthContext";
-import type { BookingRequest, BookingStatus } from "@/lib/types";
+import type { BookingRequest, BookingStatus, PaymentStatus } from "@/lib/types";
 
 const ALL_STATUSES: BookingStatus[] = ["pending", "approved", "completed", "declined"];
 
@@ -58,9 +58,8 @@ function buildChartData(
   bookings: BookingRequest[],
   period: TimePeriod
 ): ChartDataPoint[] {
-  const revenueBookings = bookings.filter(
-    (b) => b.status === "approved" || b.status === "completed"
-  );
+  // Only count confirmed payments — not just approved bookings
+  const revenueBookings = bookings.filter((b) => b.paymentStatus === "paid");
 
   const now = new Date();
   let start: Date;
@@ -102,7 +101,8 @@ function buildChartData(
     } else {
       key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     }
-    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + (b.price ?? 0));
+    // Use totalAmount (actual booking total) if available, fall back to price
+    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + (b.totalAmount ?? b.price ?? 0));
   }
 
   const points: ChartDataPoint[] = [];
@@ -300,8 +300,8 @@ function VenueBookings() {
   const totalRevenue = useMemo(
     () =>
       periodBookings
-        .filter((b) => b.status === "approved" || b.status === "completed")
-        .reduce((sum, b) => sum + (b.price ?? 0), 0),
+        .filter((b) => b.paymentStatus === "paid")
+        .reduce((sum, b) => sum + (b.totalAmount ?? b.price ?? 0), 0),
     [periodBookings]
   );
 
@@ -444,9 +444,109 @@ function VenueBookings() {
 // RENTER (Freelancer) — Booking History
 // ────────────────────────────────────────────────────────────
 function RenterBookings() {
-  const { user, bookingRequests } = useAuth();
+  const { user, bookingRequests, refreshBookings } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "all">("all");
   const [timePeriod, setTimePeriod] = useState<TimePeriod>("month");
+
+  // Pay Now state
+  const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string>("");
+  const [paymentBanner, setPaymentBanner] = useState<"success" | "cancelled" | null>(null);
+  // ID of the booking currently being confirmed after Stripe redirect
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null);
+
+  // Step 1: Read Stripe redirect params and store bookingId before cleaning the URL.
+  // Separating URL-reading from polling avoids re-running the poll when searchParams changes.
+  useEffect(() => {
+    const result = searchParams.get("payment");
+    const bookingIdParam = searchParams.get("bookingId");
+
+    if (!result) return;
+
+    if (result === "success" && bookingIdParam) {
+      setPaymentBanner("success");
+      setConfirmingPaymentId(bookingIdParam); // Save before URL cleanup — triggers polling below
+    } else if (result === "cancelled") {
+      setPaymentBanner("cancelled");
+    }
+
+    // Clean the query params from the URL without triggering a full navigation
+    router.replace("/bookings");
+  }, [searchParams, router]);
+
+  // Step 2: Poll /api/stripe/checkout/confirm until the payment is confirmed.
+  // This handles both the webhook race condition and local-dev (no Stripe CLI).
+  useEffect(() => {
+    if (!confirmingPaymentId) return;
+
+    let cancelled = false;
+    const MAX_ATTEMPTS = 15; // 15 × 2 s = 30 s maximum wait
+    const INTERVAL_MS = 2000;
+
+    async function poll(attempt: number) {
+      if (cancelled) return;
+      try {
+        const res = await fetch(
+          `/api/stripe/checkout/confirm?bookingId=${confirmingPaymentId}`
+        );
+        const data = (res.ok ? await res.json() : null) as {
+          paymentStatus?: string;
+        } | null;
+
+        if (data?.paymentStatus === "paid") {
+          if (!cancelled) {
+            // Re-fetch all bookings so the UI reflects the confirmed paymentStatus
+            await refreshBookings();
+            setConfirmingPaymentId(null);
+          }
+          return;
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => poll(attempt + 1), INTERVAL_MS);
+        } else {
+          // Timed out — do a best-effort refresh and stop spinner
+          if (!cancelled) {
+            await refreshBookings();
+            setConfirmingPaymentId(null);
+          }
+        }
+      } catch {
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => poll(attempt + 1), INTERVAL_MS);
+        } else if (!cancelled) {
+          setConfirmingPaymentId(null);
+        }
+      }
+    }
+
+    poll(0);
+    return () => { cancelled = true; };
+  }, [confirmingPaymentId, refreshBookings]);
+
+  const handlePayNow = useCallback(async (bookingId: string) => {
+    setPayingBookingId(bookingId);
+    setPayError("");
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setPayError(data.error ?? "Failed to start payment. Please try again.");
+        setPayingBookingId(null);
+      }
+    } catch {
+      setPayError("Network error. Please try again.");
+      setPayingBookingId(null);
+    }
+  }, []);
 
   const myBookings = useMemo(
     () => bookingRequests.filter((b) => b.renterId === user?.accountId),
@@ -475,8 +575,8 @@ function RenterBookings() {
   const totalSpent = useMemo(
     () =>
       periodBookings
-        .filter((b) => b.status === "approved" || b.status === "completed")
-        .reduce((sum, b) => sum + (b.price ?? 0), 0),
+        .filter((b) => b.paymentStatus === "paid")
+        .reduce((sum, b) => sum + (b.totalAmount ?? b.price ?? 0), 0),
     [periodBookings]
   );
 
@@ -507,6 +607,29 @@ function RenterBookings() {
             Browse Listings
           </Link>
         </div>
+
+        {/* Payment result banners */}
+        {paymentBanner === "success" && (
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-5 py-4">
+            <svg className="h-5 w-5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-sm font-medium text-success">Payment successful! Your booking is confirmed.</p>
+          </div>
+        )}
+        {paymentBanner === "cancelled" && (
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/10 px-5 py-4">
+            <svg className="h-5 w-5 shrink-0 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <p className="text-sm text-muted">Payment was cancelled. You can try again from your booking.</p>
+          </div>
+        )}
+        {payError && (
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-5 py-4">
+            <p className="text-sm text-destructive">{payError}</p>
+          </div>
+        )}
 
         {/* Time Period Filter */}
         <div className="mb-6">
@@ -570,11 +693,18 @@ function RenterBookings() {
         {filtered.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {filtered.map((booking) => (
-              <BookingCard
-                key={booking.id}
-                booking={booking}
-                perspective="renter"
-              />
+              <div key={booking.id} className="flex flex-col gap-2">
+                <BookingCard
+                  booking={booking}
+                  perspective="renter"
+                />
+                <PayNowButton
+                  booking={booking}
+                  onPay={handlePayNow}
+                  loading={payingBookingId === booking.id}
+                  confirming={confirmingPaymentId === booking.id}
+                />
+              </div>
             ))}
           </div>
         ) : (
@@ -610,5 +740,70 @@ function RenterBookings() {
         )}
       </div>
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Pay Now Button — shown for approved, unpaid renter bookings
+// ────────────────────────────────────────────────────────────
+function PayNowButton({
+  booking,
+  onPay,
+  loading,
+  confirming,
+}: {
+  booking: BookingRequest;
+  onPay: (id: string) => void;
+  loading: boolean;
+  confirming?: boolean;
+}) {
+  const paymentStatus = (booking.paymentStatus ?? "unpaid") as PaymentStatus;
+
+  if (booking.status !== "approved") return null;
+
+  if (paymentStatus === "paid") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-2 text-sm font-medium text-success">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        Payment confirmed
+      </div>
+    );
+  }
+
+  // Show a confirming spinner while we poll Stripe to verify the payment
+  if (confirming) {
+    return (
+      <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-medium text-primary">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        Confirming payment…
+      </div>
+    );
+  }
+
+  const isPending = paymentStatus === "pending_payment";
+
+  return (
+    <button
+      onClick={() => onPay(booking.id)}
+      disabled={loading}
+      className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-60 cursor-pointer transition-colors"
+    >
+      {loading ? (
+        <>
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          Redirecting to payment…
+        </>
+      ) : (
+        <>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+          {isPending ? "Resume payment" : "Pay now"}
+          {booking.totalAmount ? ` — $${booking.totalAmount.toFixed(2)} AUD` : ""}
+        </>
+      )}
+    </button>
   );
 }

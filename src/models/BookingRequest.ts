@@ -28,6 +28,13 @@ const bookingRequestSchema = new Schema(
       type: { day: Number, start: String, end: String },
       default: null,
     },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "pending_payment", "paid", "refunded"],
+      default: "unpaid",
+    },
+    stripeCheckoutSessionId: { type: String, default: null },
+    totalAmount: { type: Number, default: null },
   },
   { timestamps: true }
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -58,9 +58,8 @@ interface ChartDataPoint {
 }
 
 function buildChartData(bookings: BookingRequest[], period: TimePeriod): ChartDataPoint[] {
-  const revenueBookings = bookings.filter(
-    (b) => b.status === "approved" || b.status === "completed"
-  );
+  // Only count confirmed payments — not just approved bookings
+  const revenueBookings = bookings.filter((b) => b.paymentStatus === "paid");
   const now = new Date();
   let start: Date;
   let formatDate: (d: Date) => string;
@@ -95,7 +94,8 @@ function buildChartData(bookings: BookingRequest[], period: TimePeriod): ChartDa
     const key = isMonthly
       ? `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`
       : `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + (b.price ?? 0));
+    // Use totalAmount (actual booking total) if available, fall back to price
+    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + (b.totalAmount ?? b.price ?? 0));
   }
 
   const points: ChartDataPoint[] = [];
@@ -249,7 +249,9 @@ function VenueDashboard() {
   const pendingCount = pendingRequests.length;
 
   const totalRevenue = useMemo(
-    () => incomingRequests.filter((b) => b.status === "approved" || b.status === "completed").reduce((sum, b) => sum + (b.price ?? 0), 0),
+    () => incomingRequests
+      .filter((b) => b.paymentStatus === "paid")
+      .reduce((sum, b) => sum + (b.totalAmount ?? b.price ?? 0), 0),
     [incomingRequests]
   );
 
@@ -271,7 +273,9 @@ function VenueDashboard() {
   }, [periodBookings]);
 
   const periodRevenue = useMemo(
-    () => periodBookings.filter((b) => b.status === "approved" || b.status === "completed").reduce((sum, b) => sum + (b.price ?? 0), 0),
+    () => periodBookings
+      .filter((b) => b.paymentStatus === "paid")
+      .reduce((sum, b) => sum + (b.totalAmount ?? b.price ?? 0), 0),
     [periodBookings]
   );
 
@@ -601,7 +605,7 @@ function VenueDashboard() {
               {/* RIGHT: Trust Profile sticky sidebar */}
               {user?.accountId && (
                 <div className="lg:w-[300px] lg:shrink-0 lg:sticky lg:top-6">
-                  <TrustProfileCard accountId={user.accountId} role="venue" />
+                  <TrustProfileCard accountId={user.accountId} role="venue" isOwner />
                 </div>
               )}
 
@@ -707,6 +711,33 @@ function RenterDashboard() {
   const { user, bookingRequests } = useAuth();
   const [dashTab, setDashTab] = useState<"requests" | "history">("requests");
 
+  // Pay Now state — lets freelancers pay directly from the dashboard
+  const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string>("");
+
+  const handlePayNow = useCallback(async (bookingId: string) => {
+    setPayingBookingId(bookingId);
+    setPayError("");
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (res.ok && data.url) {
+        // Stripe redirects back to /bookings?payment=success where confirmation is handled
+        window.location.href = data.url;
+      } else {
+        setPayError(data.error ?? "Failed to start payment. Please try again.");
+        setPayingBookingId(null);
+      }
+    } catch {
+      setPayError("Network error. Please try again.");
+      setPayingBookingId(null);
+    }
+  }, []);
+
   // Booking History tab state
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "all">("all");
   const [timePeriod, setTimePeriod] = useState<TimePeriod>("month");
@@ -728,6 +759,11 @@ function RenterDashboard() {
 
   const approvedCount = myRequests.filter((b) => b.status === "approved").length;
   const pendingCount = myRequests.filter((b) => b.status === "pending").length;
+  // Approved bookings that haven't been paid yet — drives the action banner
+  const paymentDueBookings = useMemo(
+    () => myRequests.filter((b) => b.status === "approved" && b.paymentStatus !== "paid"),
+    [myRequests]
+  );
 
   // Booking History tab data
   const periodBookings = useMemo(
@@ -748,8 +784,8 @@ function RenterDashboard() {
 
   const totalSpent = useMemo(
     () => periodBookings
-      .filter((b) => b.status === "approved" || b.status === "completed")
-      .reduce((sum, b) => sum + (b.price ?? 0), 0),
+      .filter((b) => b.paymentStatus === "paid")
+      .reduce((sum, b) => sum + (b.totalAmount ?? b.price ?? 0), 0),
     [periodBookings]
   );
 
@@ -778,6 +814,43 @@ function RenterDashboard() {
             Browse Listings
           </Link>
         </div>
+
+        {/* ── Payment Required Banner ───────────────────────────────── */}
+        {/* Shown whenever the freelancer has approved bookings that haven't been paid */}
+        {paymentDueBookings.length > 0 && (
+          <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-warning/40 bg-warning/10 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning/20 text-warning">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">
+                  {paymentDueBookings.length === 1
+                    ? "1 booking is awaiting payment"
+                    : `${paymentDueBookings.length} bookings are awaiting payment`}
+                </p>
+                <p className="mt-0.5 text-sm text-muted">
+                  Your venue{paymentDueBookings.length > 1 ? "s have" : " has"} accepted your request. Complete payment to confirm your chair rental.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/bookings"
+              className="shrink-0 rounded-lg bg-warning px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+            >
+              Pay now
+            </Link>
+          </div>
+        )}
+
+        {/* Pay error */}
+        {payError && (
+          <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-5 py-3">
+            <p className="text-sm text-destructive">{payError}</p>
+          </div>
+        )}
 
         {/* Sub-tab bar */}
         <div className="mb-8 flex gap-1 rounded-xl bg-muted/10 p-1">
@@ -838,7 +911,7 @@ function RenterDashboard() {
               </div>
 
               {user?.accountId && (
-                <TrustProfileCard accountId={user.accountId} role="renter" />
+                <TrustProfileCard accountId={user.accountId} role="renter" isOwner />
               )}
             </div>
 
@@ -853,7 +926,40 @@ function RenterDashboard() {
                 </div>
                 <div className="space-y-3">
                   {activeRecurring.map((booking) => (
-                    <BookingCard key={booking.id} booking={booking} perspective="renter" />
+                    <div key={booking.id} className="flex flex-col gap-2">
+                      <BookingCard booking={booking} perspective="renter" />
+                      {booking.paymentStatus !== "paid" && (
+                        <button
+                          type="button"
+                          onClick={() => handlePayNow(booking.id)}
+                          disabled={payingBookingId === booking.id}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg bg-warning px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60 cursor-pointer transition-opacity"
+                        >
+                          {payingBookingId === booking.id ? (
+                            <>
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                              Redirecting to payment…
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                              Pay now
+                              {booking.totalAmount ? ` — $${booking.totalAmount.toFixed(2)} AUD` : ""}
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {booking.paymentStatus === "paid" && (
+                        <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-2 text-sm font-medium text-success">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Payment confirmed
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -873,7 +979,42 @@ function RenterDashboard() {
             {otherRequests.length > 0 ? (
               <div className="space-y-3">
                 {otherRequests.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} perspective="renter" showComplete={booking.status === "approved"} />
+                  <div key={booking.id} className="flex flex-col gap-2">
+                    <BookingCard booking={booking} perspective="renter" showComplete={booking.status === "approved"} />
+                    {/* Pay Now button — shown for approved bookings not yet paid */}
+                    {booking.status === "approved" && booking.paymentStatus !== "paid" && (
+                      <button
+                        type="button"
+                        onClick={() => handlePayNow(booking.id)}
+                        disabled={payingBookingId === booking.id}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-warning px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60 cursor-pointer transition-opacity"
+                      >
+                        {payingBookingId === booking.id ? (
+                          <>
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            Redirecting to payment…
+                          </>
+                        ) : (
+                          <>
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                            Pay now
+                            {booking.totalAmount ? ` — $${booking.totalAmount.toFixed(2)} AUD` : ""}
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {/* Paid indicator */}
+                    {booking.status === "approved" && booking.paymentStatus === "paid" && (
+                      <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-2 text-sm font-medium text-success">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Payment confirmed
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             ) : (

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/db";
 import { ListingModel } from "@/models/Listing";
+import { getStripe, isStripeConfigured } from "@/lib/stripe";
 import type { Listing, ListingMode } from "@/lib/types";
 
 function toListing(doc: {
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const accountId = `${session.user.id}_venue`;
     const venueName = (session.user as { name?: string }).name ?? "Venue";
+
     const doc = await ListingModel.create({
       venueId: accountId,
       venueName,
@@ -95,6 +97,51 @@ export async function POST(request: Request) {
       slotCapacity: body.slotCapacity ?? 1,
       rating: 0,
     });
+
+    // Create a Stripe Product at the platform level for this listing.
+    // Products are created on the platform account (not the connected venue account).
+    // The connected account mapping is stored in the product's metadata.
+    // Failure to create the product does NOT block listing creation.
+    if (isStripeConfigured()) {
+      try {
+        const stripe = getStripe();
+        const listingId = doc._id.toString();
+
+        // The price_data in checkout uses unit_amount in cents, but the Stripe Product
+        // default_price_data is for catalog display — the actual booking total is
+        // calculated dynamically (days × price) at checkout time.
+        const priceInCents = Math.round(body.price * 100);
+
+        const product = await stripe.products.create({
+          name: body.title,
+          description: `${body.description} — ${body.priceType} rate at ${body.location}`,
+          // PLACEHOLDER: add images here if the listing has media URLs
+          default_price_data: {
+            // PLACEHOLDER: change currency to match your market (e.g. 'usd', 'gbp')
+            currency: "aud",
+            // Base rate per billing period (displayed in Stripe dashboard)
+            unit_amount: priceInCents,
+          },
+          metadata: {
+            // Maps the platform product back to the listing and venue
+            listingId,
+            venueId: accountId,
+            priceType: body.priceType ?? "daily",
+          },
+          // Do NOT pass stripeAccount here — products are created at the platform level
+          // (not on the connected account), which is required for destination charges.
+        });
+
+        // Store the Stripe Product ID on the listing for future reference
+        await ListingModel.findByIdAndUpdate(listingId, {
+          $set: { stripeProductId: product.id },
+        });
+      } catch (stripeErr) {
+        // Log but don't fail listing creation if Stripe product sync fails
+        console.warn("Listings POST: Stripe product creation failed:", stripeErr);
+      }
+    }
+
     const listing = toListing(doc);
     return NextResponse.json(listing);
   } catch (e) {

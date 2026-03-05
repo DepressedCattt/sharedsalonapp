@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { connectDB } from "@/lib/db";
 import { BookingRequestModel } from "@/models/BookingRequest";
 import { ListingModel } from "@/models/Listing";
-import type { BookingRequest, BookingType, AvailabilitySlot } from "@/lib/types";
+import type { BookingRequest, BookingType, AvailabilitySlot, PaymentStatus } from "@/lib/types";
 
 function toBookingRequest(doc: {
   _id: { toString(): string };
@@ -39,6 +39,9 @@ function toBookingRequest(doc: {
     reviewSubmitted: (o.reviewSubmitted as boolean) ?? false,
     bookingType: ((o.bookingType as BookingType) ?? "date_range"),
     recurringSlot: (o.recurringSlot as AvailabilitySlot | undefined) ?? undefined,
+    paymentStatus: (o.paymentStatus as PaymentStatus | undefined) ?? "unpaid",
+    stripeCheckoutSessionId: (o.stripeCheckoutSessionId as string | undefined) ?? undefined,
+    totalAmount: (o.totalAmount as number | undefined) ?? undefined,
     createdAt,
   };
 }

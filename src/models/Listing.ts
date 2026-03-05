@@ -31,6 +31,8 @@ const listingSchema = new Schema(
     houseRules: [String],
     listingMode: { type: String, enum: ["one_off", "recurring"], default: "one_off" },
     slotCapacity: { type: Number, default: 1 },
+    // Stripe Product ID created at the platform level when the listing is published
+    stripeProductId: { type: String, default: null },
     rating: { type: Number, default: 0 },
     ratingBreakdown: {
       type: {

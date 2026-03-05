@@ -40,6 +40,13 @@ const trustProfileSchema = new Schema(
     renterMetrics: { type: renterMetricsSchema, default: null },
     venueMetrics: { type: venueMetricsSchema, default: null },
     lastCalculatedAt: { type: Date, default: null },
+    abnVerified: { type: Boolean, default: false },
+    abnNumber: { type: String, default: null },
+    abnVerifiedAt: { type: Date, default: null },
+    abnMatchType: { type: String, enum: ["auth_name", "display_name"], default: null },
+    idVerified: { type: Boolean, default: false },
+    idVerifiedAt: { type: Date, default: null },
+    stripeVerificationSessionId: { type: String, default: null },
   },
   { timestamps: true }
 );

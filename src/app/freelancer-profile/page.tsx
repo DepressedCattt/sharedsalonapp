@@ -850,7 +850,7 @@ function FreelancerTrustTab({ renterId }: { renterId: string }) {
   return (
     <div className="space-y-5 pb-10">
       {/* Current trust profile */}
-      <TrustProfileCard accountId={renterId} role="renter" />
+      <TrustProfileCard accountId={renterId} role="renter" isOwner />
 
       {/* How your score is calculated */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">

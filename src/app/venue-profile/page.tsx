@@ -1078,7 +1078,7 @@ function VenueTrustTab({ venueId }: { venueId: string }) {
   return (
     <div className="space-y-5 pb-10">
       {/* Current trust profile */}
-      <TrustProfileCard accountId={venueId} role="venue" />
+      <TrustProfileCard accountId={venueId} role="venue" isOwner />
 
       {/* How your score is calculated */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
