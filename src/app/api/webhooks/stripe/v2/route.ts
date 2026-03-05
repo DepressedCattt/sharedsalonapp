@@ -60,16 +60,23 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature") ?? "";
 
-  // parseThinEvent verifies the webhook signature and returns the thin event object.
-  // Thin events only contain: id, type, created, and related_object — NOT the full payload.
-  let thinEvent: { id: string; type: string };
+  // V2 thin events use the same HMAC-SHA256 signature mechanism as V1 events.
+  // stripe.parseThinEvent() was introduced in a later SDK version, so we use
+  // constructEvent() for signature verification and parse the id/type from the body.
+  let thinEventId: string;
+  let thinEventType: string;
   try {
-    thinEvent = stripe.parseThinEvent(rawBody, sig, webhookSecret) as {
-      id: string;
-      type: string;
-    };
+    // constructEvent verifies the stripe-signature header against the raw body.
+    // Cast to unknown first since the V2 thin event shape differs from Stripe.Event.
+    const parsed = stripe.webhooks.constructEvent(
+      rawBody,
+      sig,
+      webhookSecret
+    ) as unknown as { id: string; type: string };
+    thinEventId = parsed.id;
+    thinEventType = parsed.type;
   } catch (err) {
-    console.error("[stripe v2 webhook] Thin event signature verification failed:", err);
+    console.error("[stripe v2 webhook] Signature verification failed:", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -84,7 +91,7 @@ export async function POST(req: NextRequest) {
     related_object?: any;
   };
   try {
-    event = await stripe.v2.core.events.retrieve(thinEvent.id) as typeof event;
+    event = await stripe.v2.core.events.retrieve(thinEventId) as typeof event;
   } catch (err) {
     console.error("[stripe v2 webhook] Failed to retrieve full event:", err);
     return NextResponse.json({ error: "Failed to retrieve event" }, { status: 500 });
@@ -92,7 +99,8 @@ export async function POST(req: NextRequest) {
 
   await connectDB();
 
-  switch (event.type) {
+  // Use the type from the thin event body (already verified above)
+  switch (thinEventType) {
     // ── Account requirements changed ──────────────────────────────────────────
     // Triggered when Stripe requests new information from a connected account
     // (e.g. due to regulatory changes, insufficient verification, or a passed deadline).
