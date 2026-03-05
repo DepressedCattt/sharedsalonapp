@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
@@ -19,7 +19,7 @@ function getDefaultProfile(
   };
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, profile, updateProfile } = useAuth();
@@ -656,5 +656,22 @@ export default function SettingsPage() {
         <div className="pb-8" />
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background">
+          <Navbar />
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          </div>
+        </div>
+      }
+    >
+      <SettingsContent />
+    </Suspense>
   );
 }
