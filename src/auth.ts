@@ -57,6 +57,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Facebook({
       clientId: process.env.AUTH_FACEBOOK_ID,
       clientSecret: process.env.AUTH_FACEBOOK_SECRET,
+      authorization: {
+        params: {
+          scope: "email,public_profile",
+        },
+      },
     }),
     ...devProvider,
   ],
