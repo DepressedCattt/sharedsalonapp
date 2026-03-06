@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   // PLACEHOLDER: STRIPE_SECRET_KEY must be set in .env.local (sk_test_... or sk_live_...)
   if (!isStripeConfigured()) {
     return NextResponse.json(
-      { error: "Stripe is not configured. Add STRIPE_SECRET_KEY to .env.local." },
+      { error: "Stripe is not configured. Add STRIPE_SECRET_KEY to your environment variables." },
       { status: 503 }
     );
   }
